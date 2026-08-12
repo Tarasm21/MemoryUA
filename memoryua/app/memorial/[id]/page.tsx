@@ -70,18 +70,20 @@ export default function MemorialPage() {
   }, [id]);
 
   /*
-   * Публічна адреса меморіалу.
+   * ВАЖЛИВО:
+   * QR-код завжди веде на публічний сайт MEMORYUA.
    *
-   * На Vercel буде:
-   * https://memory-ua.vercel.app/memorial/ID
+   * Не localhost.
+   * Не window.location.origin.
    */
   const memorialUrl =
-    typeof window !== "undefined" && id
-      ? `${window.location.origin}/memorial/${id}`
-      : id
-        ? `https://memory-ua.vercel.app/memorial/${id}`
-        : "";
+    id
+      ? `https://memory-ua.vercel.app/memorial/${id}`
+      : "";
 
+  /*
+   * ЗАВАНТАЖЕННЯ
+   */
   if (loading) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
@@ -98,11 +100,16 @@ export default function MemorialPage() {
     );
   }
 
+  /*
+   * ПОМИЛКА / НЕ ЗНАЙДЕНО
+   */
   if (error || !memorial) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
-          <div className="text-5xl mb-5">🕊️</div>
+          <div className="text-5xl mb-5">
+            🕊️
+          </div>
 
           <h1 className="text-2xl font-bold text-slate-800 mb-3">
             Меморіал не знайдено
@@ -120,11 +127,16 @@ export default function MemorialPage() {
     );
   }
 
+  /*
+   * ОСНОВНА СТОРІНКА МЕМОРІАЛУ
+   */
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
+
       {/* HEADER */}
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-6 py-5">
+
           <div className="font-bold text-xl tracking-wide">
             MEMORYUA
           </div>
@@ -132,33 +144,42 @@ export default function MemorialPage() {
           <p className="text-xs text-slate-500 mt-1">
             Цифрова пам'ять для майбутніх поколінь
           </p>
+
         </div>
       </header>
 
       {/* CONTENT */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+
         <article className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-          
+
           {/* PROFILE */}
           <section className="px-6 sm:px-10 pt-8 sm:pt-10">
+
             <div className="text-center">
-              
+
               {/* PHOTO */}
               {memorial.photo_url ? (
                 <div className="mb-6 flex justify-center">
+
                   <img
                     src={memorial.photo_url}
                     alt={`Фото ${memorial.name}`}
                     className="w-36 h-36 sm:w-44 sm:h-44 object-cover rounded-full border-4 border-white shadow-md"
                   />
+
                 </div>
               ) : (
                 <div className="mb-6 flex justify-center">
+
                   <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-slate-100 border-4 border-white shadow-md flex items-center justify-center">
+
                     <span className="text-5xl text-slate-400">
                       🕊️
                     </span>
+
                   </div>
+
                 </div>
               )}
 
@@ -169,8 +190,9 @@ export default function MemorialPage() {
 
               {/* DATES */}
               <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-12">
-                
+
                 <div className="text-center">
+
                   <p className="text-xs uppercase tracking-wide text-slate-400">
                     Народився
                   </p>
@@ -178,6 +200,7 @@ export default function MemorialPage() {
                   <p className="mt-1 text-sm font-medium text-slate-700">
                     {memorial.birth_date || "—"}
                   </p>
+
                 </div>
 
                 <div className="hidden sm:block text-slate-300">
@@ -185,6 +208,7 @@ export default function MemorialPage() {
                 </div>
 
                 <div className="text-center">
+
                   <p className="text-xs uppercase tracking-wide text-slate-400">
                     Пішов із життя
                   </p>
@@ -192,10 +216,13 @@ export default function MemorialPage() {
                   <p className="mt-1 text-sm font-medium text-slate-700">
                     {memorial.death_date || "—"}
                   </p>
+
                 </div>
 
               </div>
+
             </div>
+
           </section>
 
           {/* DIVIDER */}
@@ -203,11 +230,13 @@ export default function MemorialPage() {
 
           {/* MEMORY */}
           <section className="px-6 sm:px-10 py-8">
+
             <h2 className="text-xl font-semibold text-slate-900">
               Пам'ять
             </h2>
 
             <div className="mt-5">
+
               {memorial.story ? (
                 <p className="text-base leading-8 text-slate-600 whitespace-pre-wrap">
                   {memorial.story}
@@ -217,7 +246,9 @@ export default function MemorialPage() {
                   Пам'ять назавжди залишається в наших серцях.
                 </p>
               )}
+
             </div>
+
           </section>
 
           {/* DIVIDER */}
@@ -225,6 +256,7 @@ export default function MemorialPage() {
 
           {/* QR CODE */}
           <section className="px-6 sm:px-10 py-10">
+
             <div className="text-center">
 
               <h2 className="text-xl font-semibold text-slate-900">
@@ -232,12 +264,14 @@ export default function MemorialPage() {
               </h2>
 
               <p className="mt-2 text-sm text-slate-500">
-                Відскануйте QR-код, щоб повернутися до цієї сторінки.
+                Відскануйте QR-код, щоб відкрити цей меморіал.
               </p>
 
               {/* QR */}
               <div className="mt-7 flex justify-center">
+
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+
                   {memorialUrl && (
                     <QRCodeSVG
                       value={memorialUrl}
@@ -246,11 +280,14 @@ export default function MemorialPage() {
                       includeMargin={true}
                     />
                   )}
+
                 </div>
+
               </div>
 
               {/* PUBLIC URL */}
               <div className="mt-5">
+
                 <p className="text-xs text-slate-400 mb-2">
                   Публічна адреса меморіалу:
                 </p>
@@ -258,14 +295,18 @@ export default function MemorialPage() {
                 <p className="text-xs text-blue-600 break-all">
                   {memorialUrl}
                 </p>
+
               </div>
 
             </div>
+
           </section>
 
           {/* FINAL MESSAGE */}
           <section className="border-t border-slate-200 px-6 sm:px-10 py-8">
+
             <div className="text-center">
+
               <p className="text-sm text-slate-500">
                 Цифровий меморіал MEMORYUA
               </p>
@@ -273,7 +314,9 @@ export default function MemorialPage() {
               <p className="text-sm text-slate-400 mt-2">
                 Пам'ять, яка залишається назавжди.
               </p>
+
             </div>
+
           </section>
 
         </article>
@@ -282,7 +325,9 @@ export default function MemorialPage() {
         <footer className="text-center py-8 text-xs text-slate-400">
           MEMORYUA — цифрова пам'ять, яка залишиться назавжди.
         </footer>
+
       </div>
+
     </main>
   );
 }
