@@ -49,7 +49,7 @@ export default function HomePage() {
         const fileName = `${id}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
-          .from("фотографії")
+          .from("photos")
           .upload(fileName, photo, {
             cacheControl: "3600",
             upsert: false,
@@ -63,7 +63,7 @@ export default function HomePage() {
         }
 
         const { data } = supabase.storage
-  .from("фотографії")
+  .from("photos")
   .getPublicUrl(fileName);
 
         photoUrl = data.publicUrl;
