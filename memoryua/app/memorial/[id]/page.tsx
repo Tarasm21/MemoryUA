@@ -33,7 +33,7 @@ export default function MemorialPage() {
       setError("");
 
       const { data, error } = await supabase
-        .from("меморіали")
+        .from("memorials")
         .select("*")
         .eq("ідентифікатор", id)
         .single();
