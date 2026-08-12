@@ -71,10 +71,6 @@ export default function HomePage() {
     try {
       let photoUrl = "";
 
-      // =========================
-      // 1. Завантаження фотографії
-      // =========================
-
       if (photo) {
         const extension =
           photo.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -101,10 +97,6 @@ export default function HomePage() {
         photoUrl = data.publicUrl;
       }
 
-      // =========================
-      // 2. Створення меморіалу
-      // =========================
-
       const { error: insertError } = await supabase
         .from("memorials")
         .insert({
@@ -120,8 +112,6 @@ export default function HomePage() {
       if (insertError) {
         console.error(insertError);
 
-        // Якщо меморіал не створився,
-        // видаляємо вже завантажене фото.
         if (uploadedFileName) {
           await supabase.storage
             .from("photos")
@@ -132,10 +122,6 @@ export default function HomePage() {
           "Не вдалося створити меморіал. Перевірте Supabase."
         );
       }
-
-      // =========================
-      // 3. Відкриваємо меморіал
-      // =========================
 
       router.push(`/memorial/${id}`);
     } catch (error) {
@@ -154,10 +140,8 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
 
-      {/* HEADER */}
       <header className="border-b border-slate-200 bg-white">
         <div className="max-w-5xl mx-auto px-6 py-5">
-
           <div className="text-2xl font-bold tracking-wide">
             MEMORYUA
           </div>
@@ -165,11 +149,9 @@ export default function HomePage() {
           <p className="text-sm text-slate-500 mt-1">
             Цифрова пам'ять для майбутніх поколінь
           </p>
-
         </div>
       </header>
 
-      {/* CONTENT */}
       <div className="max-w-3xl mx-auto px-6 py-12">
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
@@ -185,7 +167,6 @@ export default function HomePage() {
 
           <form onSubmit={createMemorial} className="space-y-6">
 
-            {/* ІМ'Я */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Ім'я та прізвище *
@@ -201,7 +182,6 @@ export default function HomePage() {
               />
             </div>
 
-            {/* ДАТИ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
 
               <div>
@@ -232,7 +212,6 @@ export default function HomePage() {
 
             </div>
 
-            {/* ФОТО */}
             <div>
 
               <label className="block text-sm font-medium mb-2">
@@ -286,7 +265,6 @@ export default function HomePage() {
 
             </div>
 
-            {/* ПАМ'ЯТЬ */}
             <div>
 
               <label className="block text-sm font-medium mb-2">
@@ -303,7 +281,6 @@ export default function HomePage() {
 
             </div>
 
-            {/* КНОПКА */}
             <button
               type="submit"
               disabled={loading}
