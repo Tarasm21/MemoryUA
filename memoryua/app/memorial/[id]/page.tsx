@@ -11,8 +11,8 @@ type Memorial = {
   birth_date: string | null;
   death_date: string | null;
   story: string | null;
-  created_at: string | null;
   photo_url: string | null;
+  created_at?: string | null;
 };
 
 export default function MemorialPage() {
@@ -28,13 +28,14 @@ export default function MemorialPage() {
   useEffect(() => {
     async function loadMemorial() {
       if (!id) {
-        setError("ID меморіалу не знайдено.");
+        setError("ID меморіалу не вказано.");
         setLoading(false);
         return;
       }
 
       try {
-        console.log("MEMORYUA: шукаємо меморіал:", id);
+        setLoading(true);
+        setError("");
 
         const { data, error } = await supabase
           .from("memorials")
@@ -43,26 +44,24 @@ export default function MemorialPage() {
           .maybeSingle();
 
         if (error) {
-          console.error("MEMORYUA: помилка Supabase:", error);
+          console.error("Supabase error:", error);
           setError("Не вдалося завантажити меморіал.");
-          setLoading(false);
+          setMemorial(null);
           return;
         }
 
         if (!data) {
-          console.error("MEMORYUA: меморіал не знайдено:", id);
-          setError("Запис із таким ID не існує.");
-          setLoading(false);
+          setError("Меморіал не знайдено.");
+          setMemorial(null);
           return;
         }
 
-        console.log("MEMORYUA: меморіал знайдено:", data);
-
         setMemorial(data as Memorial);
-        setLoading(false);
       } catch (err) {
-        console.error("MEMORYUA: помилка:", err);
+        console.error("Load memorial error:", err);
         setError("Сталася помилка під час завантаження.");
+        setMemorial(null);
+      } finally {
         setLoading(false);
       }
     }
@@ -73,27 +72,26 @@ export default function MemorialPage() {
   /*
    * Публічна адреса меморіалу.
    *
-   * На локальному комп'ютері:
-   * http://localhost:3000/memorial/ID
-   *
-   * На Vercel:
+   * На Vercel буде:
    * https://memory-ua.vercel.app/memorial/ID
    */
   const memorialUrl =
     typeof window !== "undefined" && id
       ? `${window.location.origin}/memorial/${id}`
-      : "";
+      : id
+        ? `https://memory-ua.vercel.app/memorial/${id}`
+        : "";
 
   if (loading) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
         <div className="text-center">
-          <div className="text-2xl font-semibold text-slate-800">
-            MEMORYUA
+          <div className="text-xl font-semibold text-slate-800">
+            Завантаження меморіалу...
           </div>
 
-          <p className="mt-3 text-slate-500">
-            Завантаження меморіалу...
+          <p className="mt-2 text-sm text-slate-500">
+            Будь ласка, зачекайте.
           </p>
         </div>
       </main>
@@ -103,24 +101,20 @@ export default function MemorialPage() {
   if (error || !memorial) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
-        <div className="w-full max-w-xl bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
-          <div className="text-4xl mb-4">
-            🕊️
-          </div>
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
+          <div className="text-5xl mb-5">🕊️</div>
 
-          <h1 className="text-2xl font-semibold text-slate-800">
+          <h1 className="text-2xl font-bold text-slate-800 mb-3">
             Меморіал не знайдено
           </h1>
 
-          <p className="text-slate-500 mt-4">
+          <p className="text-slate-500">
             {error || "Запис із таким ID не існує."}
           </p>
 
-          {id && (
-            <p className="text-xs text-slate-400 mt-6 break-all">
-              ID: {id}
-            </p>
-          )}
+          <p className="mt-5 text-xs text-slate-400 break-all">
+            ID: {id || "невідомий"}
+          </p>
         </div>
       </main>
     );
@@ -129,139 +123,163 @@ export default function MemorialPage() {
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
       {/* HEADER */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-5">
-          <div className="text-2xl font-bold tracking-wide">
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-4xl mx-auto px-6 py-5">
+          <div className="font-bold text-xl tracking-wide">
             MEMORYUA
           </div>
 
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Цифрова пам'ять для майбутніх поколінь
           </p>
         </div>
       </header>
 
       {/* CONTENT */}
-      <div className="max-w-3xl mx-auto px-4 py-10">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <article className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 md:p-10">
-
-            {/* PHOTO */}
-            <div className="flex justify-center mb-7">
+          
+          {/* PROFILE */}
+          <section className="px-6 sm:px-10 pt-8 sm:pt-10">
+            <div className="text-center">
+              
+              {/* PHOTO */}
               {memorial.photo_url ? (
-                <img
-                  src={memorial.photo_url}
-                  alt={`Фото ${memorial.name}`}
-                  className="w-48 h-48 md:w-56 md:h-56 object-cover rounded-full border-4 border-white shadow-lg"
-                />
+                <div className="mb-6 flex justify-center">
+                  <img
+                    src={memorial.photo_url}
+                    alt={`Фото ${memorial.name}`}
+                    className="w-36 h-36 sm:w-44 sm:h-44 object-cover rounded-full border-4 border-white shadow-md"
+                  />
+                </div>
               ) : (
-                <div className="w-48 h-48 md:w-56 md:h-56 rounded-full bg-slate-100 border-4 border-white shadow-lg flex items-center justify-center">
-                  <span className="text-6xl">
-                    🕊️
-                  </span>
+                <div className="mb-6 flex justify-center">
+                  <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-slate-100 border-4 border-white shadow-md flex items-center justify-center">
+                    <span className="text-5xl text-slate-400">
+                      🕊️
+                    </span>
+                  </div>
                 </div>
               )}
-            </div>
 
-            {/* NAME */}
-            <div className="text-center">
-              <h1 className="text-3xl md:text-4xl font-semibold text-slate-900">
+              {/* NAME */}
+              <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
                 {memorial.name}
               </h1>
 
               {/* DATES */}
-              {(memorial.birth_date || memorial.death_date) && (
-                <div className="flex flex-col sm:flex-row justify-center items-center gap-5 sm:gap-10 mt-5">
-                  {memorial.birth_date && (
-                    <div className="text-center">
-                      <div className="text-xs uppercase tracking-widest text-slate-400">
-                        Народився
-                      </div>
+              <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-12">
+                
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Народився
+                  </p>
 
-                      <div className="text-lg text-slate-700 mt-1">
-                        {memorial.birth_date}
-                      </div>
-                    </div>
-                  )}
-
-                  {memorial.death_date && (
-                    <div className="text-center">
-                      <div className="text-xs uppercase tracking-widest text-slate-400">
-                        Пішов із життя
-                      </div>
-
-                      <div className="text-lg text-slate-700 mt-1">
-                        {memorial.death_date}
-                      </div>
-                    </div>
-                  )}
+                  <p className="mt-1 text-sm font-medium text-slate-700">
+                    {memorial.birth_date || "—"}
+                  </p>
                 </div>
-              )}
+
+                <div className="hidden sm:block text-slate-300">
+                  •
+                </div>
+
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Пішов із життя
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium text-slate-700">
+                    {memorial.death_date || "—"}
+                  </p>
+                </div>
+
+              </div>
             </div>
+          </section>
 
-            {/* LINE */}
-            <div className="border-t border-slate-200 my-8" />
+          {/* DIVIDER */}
+          <div className="mx-6 sm:mx-10 mt-8 border-t border-slate-200" />
 
-            {/* STORY */}
-            {memorial.story && (
-              <section>
-                <h2 className="text-2xl font-semibold text-slate-900 mb-4">
-                  Пам'ять
-                </h2>
+          {/* MEMORY */}
+          <section className="px-6 sm:px-10 py-8">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Пам'ять
+            </h2>
 
-                <p className="text-lg leading-8 text-slate-600 whitespace-pre-wrap">
+            <div className="mt-5">
+              {memorial.story ? (
+                <p className="text-base leading-8 text-slate-600 whitespace-pre-wrap">
                   {memorial.story}
                 </p>
-              </section>
-            )}
-
-            {/* QR */}
-            <section className="border-t border-slate-200 mt-10 pt-10">
-              <div className="text-center">
-                <h2 className="text-2xl font-semibold text-slate-900">
-                  Цей меморіал
-                </h2>
-
-                <p className="text-sm text-slate-500 mt-3">
-                  Відскануйте QR-код, щоб повернутися до цієї сторінки.
+              ) : (
+                <p className="text-slate-400 italic">
+                  Пам'ять назавжди залишається в наших серцях.
                 </p>
+              )}
+            </div>
+          </section>
 
-                {memorialUrl && (
-                  <>
-                    <div className="mt-6 inline-flex bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                      <QRCodeSVG
-                        value={memorialUrl}
-                        size={220}
-                        level="H"
-                        includeMargin={true}
-                      />
-                    </div>
+          {/* DIVIDER */}
+          <div className="mx-6 sm:mx-10 border-t border-slate-200" />
 
-                    <p className="text-xs text-slate-400 mt-5 break-all max-w-xl mx-auto">
-                      {memorialUrl}
-                    </p>
-                  </>
-                )}
+          {/* QR CODE */}
+          <section className="px-6 sm:px-10 py-10">
+            <div className="text-center">
+
+              <h2 className="text-xl font-semibold text-slate-900">
+                Цей меморіал
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Відскануйте QR-код, щоб повернутися до цієї сторінки.
+              </p>
+
+              {/* QR */}
+              <div className="mt-7 flex justify-center">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                  {memorialUrl && (
+                    <QRCodeSVG
+                      value={memorialUrl}
+                      size={220}
+                      level="H"
+                      includeMargin={true}
+                    />
+                  )}
+                </div>
               </div>
-            </section>
 
-            {/* MEMORYUA MESSAGE */}
-            <section className="border-t border-slate-200 mt-10 pt-10">
-              <div className="text-center">
-                <p className="text-slate-500">
-                  Цифровий меморіал MEMORYUA
+              {/* PUBLIC URL */}
+              <div className="mt-5">
+                <p className="text-xs text-slate-400 mb-2">
+                  Публічна адреса меморіалу:
                 </p>
 
-                <p className="text-sm text-slate-400 mt-2">
-                  Пам'ять, яка залишається назавжди.
+                <p className="text-xs text-blue-600 break-all">
+                  {memorialUrl}
                 </p>
               </div>
-            </section>
-          </div>
+
+            </div>
+          </section>
+
+          {/* FINAL MESSAGE */}
+          <section className="border-t border-slate-200 px-6 sm:px-10 py-8">
+            <div className="text-center">
+              <p className="text-sm text-slate-500">
+                Цифровий меморіал MEMORYUA
+              </p>
+
+              <p className="text-sm text-slate-400 mt-2">
+                Пам'ять, яка залишається назавжди.
+              </p>
+            </div>
+          </section>
+
         </article>
 
         {/* FOOTER */}
-        <footer className="text-center py-8 text-sm text-slate-400">
+        <footer className="text-center py-8 text-xs text-slate-400">
           MEMORYUA — цифрова пам'ять, яка залишиться назавжди.
         </footer>
       </div>
