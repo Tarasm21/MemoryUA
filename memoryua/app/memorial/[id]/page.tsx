@@ -24,6 +24,7 @@ export default function MemorialPage() {
   const [memorial, setMemorial] = useState<Memorial | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function loadMemorial() {
@@ -69,21 +70,79 @@ export default function MemorialPage() {
     loadMemorial();
   }, [id]);
 
-  /*
-   * ВАЖЛИВО:
-   * QR-код завжди веде на публічний сайт MEMORYUA.
-   *
-   * Не localhost.
-   * Не window.location.origin.
-   */
-  const memorialUrl =
-    id
-      ? `https://memory-ua.vercel.app/memorial/${id}`
-      : "";
+  const memorialUrl = id
+    ? `https://memory-ua.vercel.app/memorial/${id}`
+    : "";
 
-  /*
-   * ЗАВАНТАЖЕННЯ
-   */
+  // Завантаження QR-коду
+  function downloadQRCode() {
+    const svg = document.querySelector(
+      "#memoryua-qr svg"
+    ) as SVGSVGElement | null;
+
+    if (!svg) {
+      alert("Не вдалося знайти QR-код.");
+      return;
+    }
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+
+    const svgBlob = new Blob([svgData], {
+      type: "image/svg+xml;charset=utf-8",
+    });
+
+    const url = URL.createObjectURL(svgBlob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `MEMORYUA-${memorial?.name || "memorial"}.svg`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  }
+
+  // Копіювання посилання
+  async function copyMemorialLink() {
+    try {
+      await navigator.clipboard.writeText(memorialUrl);
+
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error("Copy error:", err);
+      alert("Не вдалося скопіювати посилання.");
+    }
+  }
+
+  // Поділитися меморіалом
+  async function shareMemorial() {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: memorial
+            ? `Меморіал — ${memorial.name}`
+            : "Меморіал MEMORYUA",
+          text: memorial
+            ? `Цифровий меморіал ${memorial.name}`
+            : "Цифровий меморіал MEMORYUA",
+          url: memorialUrl,
+        });
+      } catch (err) {
+        console.log("Share cancelled:", err);
+      }
+    } else {
+      await copyMemorialLink();
+      alert("Посилання скопійовано.");
+    }
+  }
+
+  // Завантаження
   if (loading) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
@@ -100,9 +159,7 @@ export default function MemorialPage() {
     );
   }
 
-  /*
-   * ПОМИЛКА / НЕ ЗНАЙДЕНО
-   */
+  // Помилка
   if (error || !memorial) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
@@ -127,9 +184,6 @@ export default function MemorialPage() {
     );
   }
 
-  /*
-   * ОСНОВНА СТОРІНКА МЕМОРІАЛУ
-   */
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
 
@@ -268,7 +322,10 @@ export default function MemorialPage() {
               </p>
 
               {/* QR */}
-              <div className="mt-7 flex justify-center">
+              <div
+                id="memoryua-qr"
+                className="mt-7 flex justify-center"
+              >
 
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
 
@@ -285,8 +342,37 @@ export default function MemorialPage() {
 
               </div>
 
+              {/* QR BUTTONS */}
+              <div className="mt-7 flex flex-col sm:flex-row justify-center gap-3">
+
+                <button
+                  type="button"
+                  onClick={downloadQRCode}
+                  className="px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition"
+                >
+                  📥 Завантажити QR-код
+                </button>
+
+                <button
+                  type="button"
+                  onClick={shareMemorial}
+                  className="px-5 py-3 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 transition"
+                >
+                  📤 Поділитися
+                </button>
+
+                <button
+                  type="button"
+                  onClick={copyMemorialLink}
+                  className="px-5 py-3 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 transition"
+                >
+                  {copied ? "✅ Скопійовано" : "🔗 Копіювати посилання"}
+                </button>
+
+              </div>
+
               {/* PUBLIC URL */}
-              <div className="mt-5">
+              <div className="mt-7">
 
                 <p className="text-xs text-slate-400 mb-2">
                   Публічна адреса меморіалу:
