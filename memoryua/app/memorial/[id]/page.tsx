@@ -24,396 +24,203 @@ export default function MemorialPage() {
   const [memorial, setMemorial] = useState<Memorial | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (!id) return;
+
     async function loadMemorial() {
-      if (!id) {
-        setError("ID меморіалу не вказано.");
+      setLoading(true);
+      setError("");
+
+      const { data, error } = await supabase
+        .from("меморіали")
+        .select("*")
+        .eq("ідентифікатор", id)
+        .single();
+
+      if (error) {
+        console.error(error);
+        setError("Меморіал не знайдено.");
         setLoading(false);
         return;
       }
 
-      try {
-        setLoading(true);
-        setError("");
-
-        const { data, error } = await supabase
-          .from("memorials")
-          .select("*")
-          .eq("id", id)
-          .maybeSingle();
-
-        if (error) {
-          console.error("Supabase error:", error);
-          setError("Не вдалося завантажити меморіал.");
-          setMemorial(null);
-          return;
-        }
-
-        if (!data) {
-          setError("Меморіал не знайдено.");
-          setMemorial(null);
-          return;
-        }
-
-        setMemorial(data as Memorial);
-      } catch (err) {
-        console.error("Load memorial error:", err);
-        setError("Сталася помилка під час завантаження.");
-        setMemorial(null);
-      } finally {
-        setLoading(false);
-      }
+      setMemorial(data);
+      setLoading(false);
     }
 
     loadMemorial();
   }, [id]);
 
-  const memorialUrl = id
-    ? `https://memory-ua.vercel.app/memorial/${id}`
-    : "";
-
-  // Завантаження QR-коду
-  function downloadQRCode() {
-    const svg = document.querySelector(
-      "#memoryua-qr svg"
-    ) as SVGSVGElement | null;
-
-    if (!svg) {
-      alert("Не вдалося знайти QR-код.");
-      return;
-    }
-
-    const svgData = new XMLSerializer().serializeToString(svg);
-
-    const svgBlob = new Blob([svgData], {
-      type: "image/svg+xml;charset=utf-8",
-    });
-
-    const url = URL.createObjectURL(svgBlob);
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `MEMORYUA-${memorial?.name || "memorial"}.svg`;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
-  }
-
-  // Копіювання посилання
-  async function copyMemorialLink() {
-    try {
-      await navigator.clipboard.writeText(memorialUrl);
-
-      setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch (err) {
-      console.error("Copy error:", err);
-      alert("Не вдалося скопіювати посилання.");
-    }
-  }
-
-  // Поділитися меморіалом
-  async function shareMemorial() {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: memorial
-            ? `Меморіал — ${memorial.name}`
-            : "Меморіал MEMORYUA",
-          text: memorial
-            ? `Цифровий меморіал ${memorial.name}`
-            : "Цифровий меморіал MEMORYUA",
-          url: memorialUrl,
-        });
-      } catch (err) {
-        console.log("Share cancelled:", err);
-      }
-    } else {
-      await copyMemorialLink();
-      alert("Посилання скопійовано.");
-    }
-  }
-
-  // Завантаження
   if (loading) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
         <div className="text-center">
-          <div className="text-xl font-semibold text-slate-800">
+          <div className="text-4xl mb-4">🕊️</div>
+          <p className="text-slate-600 text-lg">
             Завантаження меморіалу...
-          </div>
-
-          <p className="mt-2 text-sm text-slate-500">
-            Будь ласка, зачекайте.
           </p>
         </div>
       </main>
     );
   }
 
-  // Помилка
   if (error || !memorial) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-6">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
-          <div className="text-5xl mb-5">
-            🕊️
-          </div>
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 text-center">
+          <div className="text-5xl mb-5">🕊️</div>
 
-          <h1 className="text-2xl font-bold text-slate-800 mb-3">
+          <h1 className="text-2xl font-semibold text-slate-800 mb-3">
             Меморіал не знайдено
           </h1>
 
           <p className="text-slate-500">
-            {error || "Запис із таким ID не існує."}
-          </p>
-
-          <p className="mt-5 text-xs text-slate-400 break-all">
-            ID: {id || "невідомий"}
+            Перевірте QR-код або адресу сторінки.
           </p>
         </div>
       </main>
     );
   }
 
+  const formatDate = (date: string | null) => {
+    if (!date) return "";
+
+    return new Date(date).toLocaleDateString("uk-UA", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const memorialUrl =
+    typeof window !== "undefined"
+      ? window.location.href
+      : `https://memory-ua.vercel.app/memorial/${id}`;
+
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
-
       {/* HEADER */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-6 py-5">
+      <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+          <div>
+            <div className="text-2xl font-bold tracking-wide text-slate-800">
+              MEMORYUA
+            </div>
 
-          <div className="font-bold text-xl tracking-wide">
-            MEMORYUA
+            <div className="text-xs text-slate-500 mt-1">
+              Цифрова пам'ять для майбутніх поколінь
+            </div>
           </div>
 
-          <p className="text-xs text-slate-500 mt-1">
-            Цифрова пам'ять для майбутніх поколінь
-          </p>
-
+          <div className="text-2xl">
+            🕊️
+          </div>
         </div>
       </header>
 
-      {/* CONTENT */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      {/* MAIN */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+        <div className="bg-white rounded-[32px] shadow-xl overflow-hidden">
+          
+          {/* PHOTO */}
+          <div className="bg-slate-100">
+            {memorial.photo_url ? (
+              <div className="w-full flex justify-center">
+                <img
+                  src={memorial.photo_url}
+                  alt={memorial.name}
+                  className="w-full max-h-[650px] object-contain"
+                />
+              </div>
+            ) : (
+              <div className="h-80 flex items-center justify-center">
+                <div className="text-center text-slate-400">
+                  <div className="text-6xl mb-4">🕊️</div>
+                  <p>Фото не додано</p>
+                </div>
+              </div>
+            )}
+          </div>
 
-        <article className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-
-          {/* PROFILE */}
-          <section className="px-6 sm:px-10 pt-8 sm:pt-10">
-
+          {/* INFORMATION */}
+          <div className="p-6 sm:p-10">
             <div className="text-center">
+              <div className="text-sm uppercase tracking-[0.25em] text-slate-400 mb-4">
+                У пам'ять про
+              </div>
 
-              {/* PHOTO */}
-              {memorial.photo_url ? (
-                <div className="mb-6 flex justify-center">
-
-                  <img
-                    src={memorial.photo_url}
-                    alt={`Фото ${memorial.name}`}
-                    className="w-36 h-36 sm:w-44 sm:h-44 object-cover rounded-full border-4 border-white shadow-md"
-                  />
-
-                </div>
-              ) : (
-                <div className="mb-6 flex justify-center">
-
-                  <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-slate-100 border-4 border-white shadow-md flex items-center justify-center">
-
-                    <span className="text-5xl text-slate-400">
-                      🕊️
-                    </span>
-
-                  </div>
-
-                </div>
-              )}
-
-              {/* NAME */}
-              <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">
+              <h1 className="text-4xl sm:text-5xl font-serif font-semibold text-slate-800">
                 {memorial.name}
               </h1>
 
-              {/* DATES */}
-              <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-12">
-
-                <div className="text-center">
-
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Народився
-                  </p>
-
-                  <p className="mt-1 text-sm font-medium text-slate-700">
-                    {memorial.birth_date || "—"}
-                  </p>
-
-                </div>
-
-                <div className="hidden sm:block text-slate-300">
-                  •
-                </div>
-
-                <div className="text-center">
-
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Пішов із життя
-                  </p>
-
-                  <p className="mt-1 text-sm font-medium text-slate-700">
-                    {memorial.death_date || "—"}
-                  </p>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          </section>
-
-          {/* DIVIDER */}
-          <div className="mx-6 sm:mx-10 mt-8 border-t border-slate-200" />
-
-          {/* MEMORY */}
-          <section className="px-6 sm:px-10 py-8">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Пам'ять
-            </h2>
-
-            <div className="mt-5">
-
-              {memorial.story ? (
-                <p className="text-base leading-8 text-slate-600 whitespace-pre-wrap">
-                  {memorial.story}
-                </p>
-              ) : (
-                <p className="text-slate-400 italic">
-                  Пам'ять назавжди залишається в наших серцях.
-                </p>
-              )}
-
-            </div>
-
-          </section>
-
-          {/* DIVIDER */}
-          <div className="mx-6 sm:mx-10 border-t border-slate-200" />
-
-          {/* QR CODE */}
-          <section className="px-6 sm:px-10 py-10">
-
-            <div className="text-center">
-
-              <h2 className="text-xl font-semibold text-slate-900">
-                Цей меморіал
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-500">
-                Відскануйте QR-код, щоб відкрити цей меморіал.
-              </p>
-
-              {/* QR */}
-              <div
-                id="memoryua-qr"
-                className="mt-7 flex justify-center"
-              >
-
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-
-                  {memorialUrl && (
-                    <QRCodeSVG
-                      value={memorialUrl}
-                      size={220}
-                      level="H"
-                      includeMargin={true}
-                    />
+              {(memorial.birth_date || memorial.death_date) && (
+                <div className="mt-5 text-lg text-slate-500">
+                  {formatDate(memorial.birth_date)}
+                  {memorial.birth_date && memorial.death_date && (
+                    <span className="mx-3">—</span>
                   )}
+                  {formatDate(memorial.death_date)}
+                </div>
+              )}
+            </div>
 
+            {/* DIVIDER */}
+            <div className="my-10 flex items-center gap-4">
+              <div className="h-px bg-slate-200 flex-1" />
+              <div className="text-slate-400">✦</div>
+              <div className="h-px bg-slate-200 flex-1" />
+            </div>
+
+            {/* STORY */}
+            {memorial.story && (
+              <section className="max-w-3xl mx-auto">
+                <h2 className="text-2xl font-semibold text-center mb-6">
+                  Вічна пам'ять
+                </h2>
+
+                <div className="text-slate-600 text-lg leading-8 whitespace-pre-wrap text-center">
+                  {memorial.story}
+                </div>
+              </section>
+            )}
+
+            {/* QR */}
+            <section className="mt-12 pt-10 border-t border-slate-200">
+              <div className="flex flex-col items-center text-center">
+                <h2 className="text-xl font-semibold mb-3">
+                  Цифровий меморіал
+                </h2>
+
+                <p className="text-slate-500 max-w-md mb-6">
+                  Відскануйте QR-код, щоб зберегти цю сторінку пам'яті
+                  та поділитися нею з рідними.
+                </p>
+
+                <div className="bg-white p-5 rounded-2xl shadow-md border border-slate-200">
+                  <QRCodeSVG
+                    value={memorialUrl}
+                    size={220}
+                    level="H"
+                    includeMargin={true}
+                  />
                 </div>
 
-              </div>
-
-              {/* QR BUTTONS */}
-              <div className="mt-7 flex flex-col sm:flex-row justify-center gap-3">
-
-                <button
-                  type="button"
-                  onClick={downloadQRCode}
-                  className="px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition"
-                >
-                  📥 Завантажити QR-код
-                </button>
-
-                <button
-                  type="button"
-                  onClick={shareMemorial}
-                  className="px-5 py-3 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 transition"
-                >
-                  📤 Поділитися
-                </button>
-
-                <button
-                  type="button"
-                  onClick={copyMemorialLink}
-                  className="px-5 py-3 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 transition"
-                >
-                  {copied ? "✅ Скопійовано" : "🔗 Копіювати посилання"}
-                </button>
-
-              </div>
-
-              {/* PUBLIC URL */}
-              <div className="mt-7">
-
-                <p className="text-xs text-slate-400 mb-2">
-                  Публічна адреса меморіалу:
+                <p className="text-sm text-slate-400 mt-5">
+                  MEMORYUA
                 </p>
-
-                <p className="text-xs text-blue-600 break-all">
-                  {memorialUrl}
-                </p>
-
               </div>
-
-            </div>
-
-          </section>
-
-          {/* FINAL MESSAGE */}
-          <section className="border-t border-slate-200 px-6 sm:px-10 py-8">
-
-            <div className="text-center">
-
-              <p className="text-sm text-slate-500">
-                Цифровий меморіал MEMORYUA
-              </p>
-
-              <p className="text-sm text-slate-400 mt-2">
-                Пам'ять, яка залишається назавжди.
-              </p>
-
-            </div>
-
-          </section>
-
-        </article>
+            </section>
+          </div>
+        </div>
 
         {/* FOOTER */}
-        <footer className="text-center py-8 text-xs text-slate-400">
-          MEMORYUA — цифрова пам'ять, яка залишиться назавжди.
-        </footer>
-
-      </div>
-
+        <div className="text-center py-10">
+          <p className="text-sm text-slate-400">
+            MEMORYUA — цифрова пам'ять, яка залишається назавжди.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
