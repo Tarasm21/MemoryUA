@@ -98,6 +98,30 @@ export default function MemorialPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDeleteMemorial = async () => {
+  if (!id) return;
+
+  const confirmed = window.confirm(
+    "Ви впевнені, що хочете назавжди видалити цей меморіал?"
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("memorials")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("MEMORYUA DELETE ERROR:", error);
+    alert("Не вдалося видалити меморіал.");
+    return;
+  }
+
+  alert("Меморіал успішно видалено.");
+
+  window.location.href = "/";
+};
   const shareMemorial = async () => {
     const url = getMemorialUrl();
 
@@ -298,17 +322,38 @@ export default function MemorialPage() {
                     />
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={downloadQR}
-                    className="mt-5 rounded-xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-                  >
-                    ⬇️ Завантажити QR-код
-                  </button>
+                  
+                          <button
+        type="button"
+        onClick={downloadQR}
+        className="mt-5 rounded-xl bg-slate-900 px-6 py-3 text-sm text-white"
+      >
+        ↓ Завантажити QR-код
+      </button>
 
-                  <p className="mt-3 text-[11px] text-slate-400">
-                    QR-код можна передати для друку на пам'ятній табличці.
-                  </p>
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = `/memorial/${id}/edit`;
+          }}
+          className="w-full max-w-xs rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          ✏️ Редагувати меморіал
+        </button>
+
+        <button
+          type="button"
+          onClick={handleDeleteMemorial}
+          className="w-full max-w-xs rounded-xl bg-red-600 px-6 py-3 text-sm font-medium text-white hover:bg-red-700"
+        >
+          🗑️ Видалити меморіал
+        </button>
+      </div>
+
+      <p className="mt-3 text-[11px] text-slate-400">
+        QR-код можна передати для друку на пам’ятній табличці.
+      </p>
                 </div>
               </div>
             </div>

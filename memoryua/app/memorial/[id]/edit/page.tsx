@@ -160,17 +160,30 @@ export default function EditMemorialPage() {
       if (photo) {
         photoUrl = await uploadPhoto(photo);
       }
+console.log("MEMORYUA STORY BEFORE SAVE:", story);
+      const { data: updatedMemorial, error: updateError } = await supabase
+  .from("memorials")
+  .update({
+    name: name.trim(),
+    birth_date: birthDate || null,
+    death_date: deathDate || null,
+    story: story.trim() || null,
+    photo_url: photoUrl,
+  })
+  .eq("id", id)
+  .select("*")
+  .single();
 
-      const { error: updateError } = await supabase
-        .from("memorials")
-        .update({
-          name: name.trim(),
-          birth_date: birthDate || null,
-          death_date: deathDate || null,
-          story: story.trim() || null,
-          photo_url: photoUrl,
-        })
-        .eq("id", id);
+if (updateError || !updatedMemorial) {
+  console.error("MEMORYUA UPDATE ERROR:", updateError);
+
+  throw new Error(
+    updateError?.message ||
+      "Не вдалося підтвердити збереження змін у Supabase."
+  );
+}
+
+console.log("MEMORYUA UPDATED:", updatedMemorial);
 
       if (updateError) {
         console.error("MEMORYUA UPDATE ERROR:", updateError);
