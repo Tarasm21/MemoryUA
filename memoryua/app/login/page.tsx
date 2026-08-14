@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,17 +14,23 @@ export default function LoginPage() {
 
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     setError("");
+
+    if (!email.trim() || !password) {
+      setError("Введіть email та пароль.");
+      return;
+    }
+
     setLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
     if (error) {
-      setError(error.message);
+      console.error(error);
+      setError("Не вдалося увійти. Перевірте email та пароль.");
       setLoading(false);
       return;
     }
@@ -34,30 +40,50 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f5f0] px-4 py-10">
-      <div className="mx-auto max-w-md">
-        <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-8 text-center">
-            <div className="text-2xl font-bold tracking-[0.25em] text-slate-900">
-              MEMORYUA
-            </div>
+    <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-5xl px-6 py-5">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="text-2xl font-bold tracking-wide"
+          >
+            MEMORYUA
+          </button>
 
-            <p className="mt-2 text-sm text-slate-500">
-              Цифрова памʼять для майбутніх поколінь
+          <p className="mt-1 text-sm text-slate-500">
+            Цифрова пам'ять для майбутніх поколінь
+          </p>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-md px-6 py-12">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+
+          <div className="mb-8 text-center">
+            <p className="text-sm font-medium uppercase tracking-widest text-slate-400">
+              MEMORYUA
+            </p>
+
+            <h1 className="mt-2 text-3xl font-bold text-slate-900">
+              Вхід
+            </h1>
+
+            <p className="mt-3 text-sm text-slate-500">
+              Увійдіть до свого акаунта MEMORYUA.
             </p>
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-900">
-            Вхід
-          </h1>
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
-          <p className="mt-2 text-sm text-slate-500">
-            Увійдіть до свого облікового запису MEMORYUA.
-          </p>
+          <form onSubmit={handleLogin} className="space-y-5">
 
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-semibold">
                 Email
               </label>
 
@@ -65,14 +91,15 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="your@email.com"
+                autoComplete="email"
                 required
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-semibold">
                 Пароль
               </label>
 
@@ -81,45 +108,29 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Введіть пароль"
+                autoComplete="current-password"
                 required
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
               />
             </div>
-
-            {error && (
-              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-slate-900 py-4 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
             >
               {loading ? "Входимо..." : "Увійти"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="w-full rounded-xl border border-slate-300 py-3 font-semibold text-slate-700"
+            >
+              Повернутися на головну
+            </button>
+
           </form>
-
-          <div className="mt-6 text-center text-sm text-slate-500">
-            Ще немає акаунта?
-          </div>
-
-          <button
-            type="button"
-            onClick={() => router.push("/register")}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Створити акаунт
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="mt-3 w-full text-sm text-slate-500 hover:text-slate-900"
-          >
-            ← Повернутися на головну
-          </button>
         </div>
       </div>
     </main>
