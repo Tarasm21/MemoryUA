@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  ChangeEvent,
-  FormEvent,
-  useEffect,
-  useState,
-} from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -20,12 +15,32 @@ type Memorial = {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 
+function formatDateForInput(value: string | null) {
+  if (!value) return "";
+
+  // Якщо дата вже YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  // Якщо прийшла ISO-дата
+  if (value.includes("T")) {
+    return value.slice(0, 10);
+  }
+
+  return value;
+}
+
 export default function EditMemorialPage() {
   const params = useParams();
   const router = useRouter();
 
-  const rawId = params?.id;
-  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  const id =
+    typeof params?.id === "string"
+      ? params.id
+      : Array.isArray(params?.id)
+        ? params.id[0]
+        : "";
 
   const [memorial, setMemorial] = useState<Memorial | null>(null);
 
@@ -39,45 +54,70 @@ export default function EditMemorialPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    if (!id) return;
-
-    async function loadMemorial() {
-      setLoading(true);
-      setError("");
-
-      const { data, error } = await supabase
-        .from("memorials")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) {
-        console.error("MEMORYUA LOAD ERROR:", error);
-        setError("Не вдалося завантажити меморіал.");
-        setLoading(false);
-        return;
-      }
-
-      setMemorial(data);
-
-      setName(data.name ?? "");
-      setBirthDate(data.birth_date ?? "");
-      setDeathDate(data.death_date ?? "");
-      setStory(data.story ?? "");
-      setPhotoPreview(data.photo_url ?? null);
-
+    if (!id) {
+      setError("Не знайдено ID меморіалу.");
       setLoading(false);
+      return;
     }
 
     loadMemorial();
   }, [id]);
 
-  function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
+  async function loadMemorial() {
+    setLoading(true);
+    setError("");
+
+    try {
+      console.log("MEMORYUA LOAD ID:", id);
+
+      const { data, error: loadError } = await supabase
+        .from("memorials")
+        .select("*")
+        .eq("id", id)
+        .limit(1);
+
+      console.log("MEMORYUA LOAD RESULT:", data);
+      console.log("MEMORYUA LOAD ERROR:", loadError);
+
+      if (loadError) {
+        throw new Error(loadError.message);
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error("Меморіал не знайдено.");
+      }
+
+      const item = data[0] as Memorial;
+
+      setMemorial(item);
+
+      setName(item.name ?? "");
+      setBirthDate(formatDateForInput(item.birth_date));
+      setDeathDate(formatDateForInput(item.death_date));
+      setStory(item.story ?? "");
+
+      setPhotoPreview(item.photo_url ?? null);
+    } catch (err) {
+      console.error("MEMORYUA LOAD ERROR:", err);
+
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Не вдалося завантажити меморіал.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handlePhotoChange(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
     setError("");
     setSuccess("");
 
@@ -105,8 +145,10 @@ export default function EditMemorialPage() {
     setPhotoPreview(previewUrl);
   }
 
-  async function uploadPhoto(file: File): Promise<string | null> {
-    if (!id) return null;
+  async function uploadPhoto(file: File): Promise<string> {
+    if (!id) {
+      throw new Error("Не знайдено ID меморіалу.");
+    }
 
     const extension =
       file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -115,17 +157,24 @@ export default function EditMemorialPage() {
 
     const filePath = `memorials/${fileName}`;
 
+    console.log("MEMORYUA PHOTO UPLOAD:", filePath);
+
     const { error: uploadError } = await supabase.storage
       .from("memorial-photos")
       .upload(filePath, file, {
         cacheControl: "3600",
-        upsert: true,
+        upsert: false,
       });
 
     if (uploadError) {
-      console.error("MEMORYUA PHOTO UPLOAD ERROR:", uploadError);
+      console.error(
+        "MEMORYUA PHOTO UPLOAD ERROR:",
+        uploadError
+      );
+
       throw new Error(
-        "Не вдалося завантажити фото. Перевірте налаштування сховища Supabase."
+        uploadError.message ||
+          "Не вдалося завантажити фото."
       );
     }
 
@@ -133,10 +182,23 @@ export default function EditMemorialPage() {
       .from("memorial-photos")
       .getPublicUrl(filePath);
 
+    if (!data?.publicUrl) {
+      throw new Error(
+        "Не вдалося отримати адресу фотографії."
+      );
+    }
+
+    console.log(
+      "MEMORYUA PHOTO URL:",
+      data.publicUrl
+    );
+
     return data.publicUrl;
   }
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setError("");
@@ -157,42 +219,50 @@ export default function EditMemorialPage() {
     try {
       let photoUrl = memorial?.photo_url ?? null;
 
+      // Якщо вибране нове фото
       if (photo) {
         photoUrl = await uploadPhoto(photo);
       }
-console.log("MEMORYUA STORY BEFORE SAVE:", story);
-      const { data: updatedMemorial, error: updateError } = await supabase
-  .from("memorials")
-  .update({
-    name: name.trim(),
-    birth_date: birthDate || null,
-    death_date: deathDate || null,
-    story: story.trim() || null,
-    photo_url: photoUrl,
-  })
-  .eq("id", id)
-  .select("*")
-  .single();
 
-if (updateError || !updatedMemorial) {
-  console.error("MEMORYUA UPDATE ERROR:", updateError);
+      console.log(
+        "MEMORYUA UPDATE ID:",
+        id
+      );
 
-  throw new Error(
-    updateError?.message ||
-      "Не вдалося підтвердити збереження змін у Supabase."
-  );
-}
+      console.log(
+        "MEMORYUA STORY BEFORE SAVE:",
+        story
+      );
 
-console.log("MEMORYUA UPDATED:", updatedMemorial);
+      /*
+       * ВАЖЛИВО:
+       * Тут НЕ використовуємо .select().single().
+       * Саме це прибирає помилку
+       * "Cannot coerce the result to a single JSON object".
+       */
+
+      const { error: updateError } = await supabase
+        .from("memorials")
+        .update({
+          name: name.trim(),
+          birth_date: birthDate || null,
+          death_date: deathDate || null,
+          story: story.trim() || null,
+          photo_url: photoUrl,
+        })
+        .eq("id", id);
+
+      console.log(
+        "MEMORYUA UPDATE ERROR:",
+        updateError
+      );
 
       if (updateError) {
-        console.error("MEMORYUA UPDATE ERROR:", updateError);
         throw new Error(
-          "Не вдалося зберегти зміни. Перевірте дані Supabase."
+          updateError.message ||
+            "Не вдалося зберегти зміни."
         );
       }
-
-      setSuccess("Зміни успішно збережено!");
 
       setMemorial((prev) =>
         prev
@@ -209,17 +279,24 @@ console.log("MEMORYUA UPDATED:", updatedMemorial);
 
       setPhoto(null);
 
+      setSuccess("Зміни успішно збережено!");
+
       setTimeout(() => {
         router.push(`/memorial/${id}`);
         router.refresh();
       }, 800);
     } catch (err) {
-      console.error(err);
+      console.error(
+        "MEMORYUA SAVE ERROR:",
+        err
+      );
 
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Сталася помилка під час збереження.");
+        setError(
+          "Сталася помилка під час збереження."
+        );
       }
     } finally {
       setSaving(false);
@@ -227,37 +304,26 @@ console.log("MEMORYUA UPDATED:", updatedMemorial);
   }
 
   async function handleDeletePhoto() {
-    if (!id) return;
+    if (!id || !memorial?.photo_url) {
+      return;
+    }
 
     setError("");
     setSuccess("");
 
-    if (!memorial?.photo_url) {
-      setPhotoPreview(null);
-      setPhoto(null);
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Ви дійсно хочете видалити фотографію?"
-    );
-
-    if (!confirmed) return;
-
-    setDeleting(true);
-
     try {
-      const photoUrl = memorial.photo_url;
+      const url = memorial.photo_url;
 
       const marker = "/storage/v1/object/public/memorial-photos/";
 
-      if (photoUrl.includes(marker)) {
-        const filePath = photoUrl.split(marker)[1];
+      if (url.includes(marker)) {
+        const filePath = url.split(marker)[1];
 
         if (filePath) {
-          const { error: removeError } = await supabase.storage
-            .from("memorial-photos")
-            .remove([filePath]);
+          const { error: removeError } =
+            await supabase.storage
+              .from("memorial-photos")
+              .remove([filePath]);
 
           if (removeError) {
             console.error(
@@ -268,15 +334,18 @@ console.log("MEMORYUA UPDATED:", updatedMemorial);
         }
       }
 
-      const { error: updateError } = await supabase
-        .from("memorials")
-        .update({
-          photo_url: null,
-        })
-        .eq("id", id);
+      const { error: updateError } =
+        await supabase
+          .from("memorials")
+          .update({
+            photo_url: null,
+          })
+          .eq("id", id);
 
       if (updateError) {
-        throw new Error("Не вдалося видалити фотографію.");
+        throw new Error(
+          updateError.message
+        );
       }
 
       setMemorial((prev) =>
@@ -289,81 +358,44 @@ console.log("MEMORYUA UPDATED:", updatedMemorial);
       );
 
       setPhotoPreview(null);
-      setPhoto(null);
 
-      setSuccess("Фотографію видалено.");
+      setSuccess(
+        "Фотографію успішно видалено."
+      );
     } catch (err) {
-      console.error(err);
+      console.error(
+        "MEMORYUA DELETE PHOTO ERROR:",
+        err
+      );
 
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Не вдалося видалити фотографію.");
+        setError(
+          "Не вдалося видалити фотографію."
+        );
       }
-    } finally {
-      setDeleting(false);
     }
   }
 
   if (loading) {
     return (
       <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-4xl px-6 py-5">
-            <div className="text-xl font-bold tracking-wide">
+        <header className="border-b bg-white">
+          <div className="mx-auto max-w-4xl px-6 py-6">
+            <div className="text-2xl font-bold">
               MEMORYUA
             </div>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Цифрова пам&apos;ять для майбутніх поколінь
-            </p>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-3xl px-4 py-12 text-center">
-          <div className="rounded-3xl border border-slate-200 bg-white p-10 shadow-sm">
-            <p className="text-slate-500">
-              Завантаження меморіалу...
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (!memorial) {
-    return (
-      <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-4xl px-6 py-5">
-            <div className="text-xl font-bold tracking-wide">
-              MEMORYUA
+            <div className="text-sm text-slate-500">
+              Цифрова пам'ять для майбутніх поколінь
             </div>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Цифрова пам&apos;ять для майбутніх поколінь
-            </p>
           </div>
         </header>
 
-        <div className="mx-auto max-w-3xl px-4 py-12">
-          <div className="rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-800">
-              Меморіал не знайдено
-            </h1>
-
-            <p className="mt-3 text-slate-500">
-              Можливо, цей меморіал був видалений або посилання
-              неправильне.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="mt-6 rounded-xl bg-slate-800 px-6 py-3 font-semibold text-white transition hover:bg-slate-700"
-            >
-              На головну
-            </button>
+        <div className="mx-auto max-w-2xl px-6 py-12">
+          <div className="rounded-3xl border bg-white p-8 text-center shadow-sm">
+            Завантаження меморіалу...
           </div>
         </div>
       </main>
@@ -372,183 +404,174 @@ console.log("MEMORYUA UPDATED:", updatedMemorial);
 
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
-      {/* HEADER */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-4xl px-6 py-5">
-          <div className="text-xl font-bold tracking-wide">
+      <header className="border-b bg-white">
+        <div className="mx-auto max-w-4xl px-6 py-6">
+          <div className="text-2xl font-bold text-slate-900">
             MEMORYUA
           </div>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Цифрова пам&apos;ять для майбутніх поколінь
-          </p>
+          <div className="text-sm text-slate-500">
+            Цифрова пам'ять для майбутніх поколінь
+          </div>
         </div>
       </header>
 
-      {/* CONTENT */}
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-6 py-8 sm:px-10">
-            <div className="mb-8 text-center">
-              <p className="text-sm font-medium uppercase tracking-widest text-slate-400">
-                MEMORYUA
-              </p>
-
-              <h1 className="mt-2 text-3xl font-bold text-slate-800">
-                Редагування меморіалу
-              </h1>
-
-              <p className="mt-3 text-sm text-slate-500">
-                Змініть інформацію та збережіть оновлення.
-              </p>
+      <div className="mx-auto max-w-2xl px-6 py-12">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="mb-8 text-center">
+            <div className="mb-2 text-sm text-slate-400">
+              MEMORYUA
             </div>
 
-            {/* ERROR */}
-            {error && (
-              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
+            <h1 className="text-3xl font-bold text-slate-900">
+              Редагування меморіалу
+            </h1>
 
-            {/* SUCCESS */}
-            {success && (
-              <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                {success}
-              </div>
-            )}
+            <p className="mt-2 text-sm text-slate-500">
+              Змініть інформацію та збережіть оновлення.
+            </p>
+          </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* NAME */}
+          {error && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6"
+          >
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Ім'я та прізвище
+              </label>
+
+              <input
+                type="text"
+                value={name}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
+                placeholder="Введіть ім'я та прізвище"
+              />
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2">
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Ім&apos;я та прізвище
+                <label className="mb-2 block text-sm font-semibold">
+                  Дата народження
                 </label>
 
                 <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Наприклад: Іван Петренко"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) =>
+                    setBirthDate(e.target.value)
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
                 />
               </div>
 
-              {/* DATES */}
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Дата народження
-                  </label>
-
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Дата смерті
-                  </label>
-
-                  <input
-                    type="date"
-                    value={deathDate}
-                    onChange={(e) => setDeathDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
-                </div>
-              </div>
-
-              {/* STORY */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Історія / пам&apos;ять
+                <label className="mb-2 block text-sm font-semibold">
+                  Дата смерті
                 </label>
 
-                <textarea
-                  value={story}
-                  onChange={(e) => setStory(e.target.value)}
-                  placeholder="Напишіть кілька слів про людину, її життя, родину, спогади..."
-                  rows={8}
-                  className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                <input
+                  type="date"
+                  value={deathDate}
+                  onChange={(e) =>
+                    setDeathDate(e.target.value)
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
                 />
               </div>
+            </div>
 
-              {/* PHOTO */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Фотографія
-                </label>
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Історія / пам'ять
+              </label>
 
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-                  {photoPreview && (
-                    <div className="mb-5">
-                      <img
-                        src={photoPreview}
-                        alt="Фото меморіалу"
-                        className="mx-auto max-h-[420px] w-auto max-w-full rounded-2xl object-contain shadow-sm"
-                      />
-                    </div>
-                  )}
+              <textarea
+                value={story}
+                onChange={(e) =>
+                  setStory(e.target.value)
+                }
+                rows={8}
+                className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
+                placeholder="Напишіть історію людини..."
+              />
+            </div>
 
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoChange}
-                    className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-slate-700"
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Фотографія
+              </label>
+
+              {photoPreview && (
+                <div className="mb-4 overflow-hidden rounded-2xl border bg-slate-50">
+                  <img
+                    src={photoPreview}
+                    alt="Фото меморіалу"
+                    className="max-h-[400px] w-full object-contain"
                   />
-
-                  <p className="mt-2 text-xs text-slate-400">
-                    JPG, PNG, WEBP. Максимальний розмір — 5 МБ.
-                  </p>
-
-                  {memorial.photo_url && (
-                    <button
-                      type="button"
-                      onClick={handleDeletePhoto}
-                      disabled={deleting || saving}
-                      className="mt-4 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {deleting
-                        ? "Видалення..."
-                        : "Видалити фотографію"}
-                    </button>
-                  )}
                 </div>
-              </div>
+              )}
 
-              {/* BUTTONS */}
-              <div className="flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 rounded-xl bg-slate-800 px-6 py-4 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Зберігаємо..." : "Зберегти зміни"}
-                </button>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                className="block w-full rounded-xl border border-slate-300 bg-white p-3 text-sm"
+              />
 
+              <p className="mt-2 text-xs text-slate-500">
+                Максимальний розмір фото — 5 МБ.
+              </p>
+
+              {memorial?.photo_url && (
                 <button
                   type="button"
-                  onClick={() => router.push(`/memorial/${id}`)}
-                  disabled={saving}
-                  className="flex-1 rounded-xl border border-slate-300 bg-white px-6 py-4 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={handleDeletePhoto}
+                  className="mt-3 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
                 >
-                  Скасувати
+                  Видалити фотографію
                 </button>
-              </div>
-            </form>
-          </div>
+              )}
+            </div>
 
-          {/* FOOTER */}
-          <div className="border-t border-slate-200 bg-slate-50 px-6 py-6 text-center">
-            <p className="text-sm text-slate-500">
-              MEMORYUA — цифрова пам&apos;ять для майбутніх поколінь
-            </p>
-          </div>
-        </article>
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row">
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving
+                  ? "Збереження..."
+                  : "Зберегти зміни"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/memorial/${id}`)
+                }
+                className="rounded-xl border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Скасувати
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </main>
   );

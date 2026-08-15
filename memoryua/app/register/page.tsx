@@ -50,7 +50,7 @@ export default function RegisterPage() {
         email: cleanEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: "https://memory-ua.vercel.app/login",
         },
       });
 
