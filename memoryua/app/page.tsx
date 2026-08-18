@@ -1,167 +1,310 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function Home() {
+export default function HomePage() {
   const router = useRouter();
 
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [deathDate, setDeathDate] = useState("");
   const [story, setStory] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const [userEmail, setUserEmail] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function createMemorial(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkAuth() {
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        console.log("MEMORYUA SESSION:", session);
+        console.log("MEMORYUA SESSION ERROR:", sessionError);
+
+        if (!mounted) return;
+
+        if (sessionError) {
+          setError(sessionError.message);
+          setCheckingAuth(false);
+          return;
+        }
+
+        if (!session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        setUserEmail(session.user.email ?? "");
+        setCheckingAuth(false);
+      } catch (err) {
+        console.error("AUTH CHECK ERROR:", err);
+
+        if (!mounted) return;
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Не вдалося перевірити авторизацію."
+        );
+
+        setCheckingAuth(false);
+      }
+    }
+
+    checkAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      setUserEmail(session.user.email ?? "");
+      setCheckingAuth(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  async function createMemorial(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
 
     if (!name.trim()) {
       setError("Введіть ім'я та прізвище.");
       return;
     }
 
-    setLoading(true);
-    setError("");
+    setSaving(true);
 
     try {
-      // Отримуємо авторизованого користувача
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      // Створюємо ID меморіалу
-      const id = crypto.randomUUID();
+      if (sessionError) {
+        throw new Error(sessionError.message);
+      }
 
-      // Створюємо запис у Supabase
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      const userId = session.user.id;
+      const memorialId = crypto.randomUUID();
+
+      console.log("MEMORYUA USER ID:", userId);
+
       const { error: insertError } = await supabase
         .from("memorials")
         .insert({
-          id,
+          id: memorialId,
+          user_id: userId,
           name: name.trim(),
           birth_date: birthDate || null,
           death_date: deathDate || null,
           story: story.trim() || null,
-          user_id: user?.id ?? null,
+          photo_url: null,
         });
 
       if (insertError) {
-        console.error(insertError);
-        setError(
-          "Не вдалося створити меморіал. Перевірте підключення до бази."
+        console.error("SUPABASE INSERT ERROR:", insertError);
+
+        throw new Error(
+          `${insertError.message} | code: ${
+            insertError.code ?? "unknown"
+          }`
         );
-        setLoading(false);
-        return;
       }
 
-      // Переходимо на сторінку створеного меморіалу
-      router.push(`/memorial/${id}`);
+      console.log("MEMORYUA: меморіал створено");
+
+      router.push(`/memorial/${memorialId}`);
     } catch (err) {
-      console.error(err);
-      setError("Сталася помилка під час створення меморіалу.");
-      setLoading(false);
+      console.error("MEMORYUA CREATE ERROR:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не вдалося створити меморіал."
+      );
+    } finally {
+      setSaving(false);
     }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
+
+  if (checkingAuth) {
+    return (
+      <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 shadow-sm">
+            Перевірка авторизації...
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-5">
           <div>
-            <div className="text-2xl font-bold tracking-wide text-slate-900">
-              MEMORYUA
+            <div className="text-xl font-semibold">MEMORYUA</div>
+
+            <div className="mt-1 text-sm text-slate-500">
+              Цифрова пам&apos;ять для майбутніх поколінь
             </div>
 
-            <div className="text-sm text-slate-500">
-              Цифрова пам’ять для майбутніх поколінь
-            </div>
+            {userEmail && (
+              <div className="mt-2 text-xs text-slate-400">
+                Ви увійшли: {userEmail}
+              </div>
+            )}
           </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Вийти
+          </button>
         </div>
       </header>
 
       <section className="mx-auto max-w-3xl px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-          <h1 className="text-3xl font-bold text-slate-900">
-            Створити меморіал
-          </h1>
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="px-6 py-10 text-center">
+            <div className="mb-6 text-6xl">🕊️</div>
 
-          <p className="mt-2 text-slate-500">
-            Створіть цифрову сторінку пам’яті та QR-код для меморіалу.
-          </p>
+            <h1 className="text-3xl font-semibold md:text-4xl">
+              MEMORYUA
+            </h1>
 
-          <form onSubmit={createMemorial} className="mt-8 space-y-5">
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Ім’я та прізвище
-              </label>
+            <p className="mt-4 text-lg text-slate-500">
+              Цифрова пам&apos;ять, яка залишається назавжди
+            </p>
 
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Наприклад: Іван Петренко"
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
-                required
-              />
-            </div>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">
+              Створіть меморіальну сторінку людини та збережіть її
+              історію, дати життя і важливі спогади.
+            </p>
+          </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Дата народження
-                </label>
+          <div className="border-t border-slate-100" />
 
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Дата смерті
-                </label>
-
-                <input
-                  type="date"
-                  value={deathDate}
-                  onChange={(e) => setDeathDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Пам’ять / біографія
-              </label>
-
-              <textarea
-                value={story}
-                onChange={(e) => setStory(e.target.value)}
-                placeholder="Напишіть кілька слів про людину..."
-                rows={7}
-                className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
-              />
-            </div>
+          <form onSubmit={createMemorial} className="px-6 py-8">
+            <h2 className="mb-6 text-2xl font-semibold">
+              Створити меморіал
+            </h2>
 
             {error && (
-              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-slate-900 px-5 py-3.5 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Створення..." : "Створити меморіал"}
-            </button>
+            <div className="space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Ім&apos;я та прізвище
+                </label>
+
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Наприклад: Іван Петренко"
+                  disabled={saving}
+                  required
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Дата народження
+                  </label>
+
+                  <input
+                    type="date"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    disabled={saving}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 disabled:bg-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Дата смерті
+                  </label>
+
+                  <input
+                    type="date"
+                    value={deathDate}
+                    onChange={(e) => setDeathDate(e.target.value)}
+                    disabled={saving}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 disabled:bg-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Історія життя
+                </label>
+
+                <textarea
+                  value={story}
+                  onChange={(e) => setStory(e.target.value)}
+                  placeholder="Напишіть історію життя, спогади, важливі моменти..."
+                  rows={8}
+                  disabled={saving}
+                  className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full rounded-xl bg-slate-800 px-6 py-4 font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving
+                  ? "Створення меморіалу..."
+                  : "Створити меморіал"}
+              </button>
+            </div>
           </form>
+        </div>
+
+        <div className="mt-8 text-center text-sm text-slate-500">
+          MEMORYUA — пам&apos;ять, яка залишається.
         </div>
       </section>
     </main>

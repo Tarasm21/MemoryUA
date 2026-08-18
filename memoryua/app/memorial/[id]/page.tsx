@@ -7,11 +7,13 @@ import { supabase } from "@/lib/supabase";
 
 type Memorial = {
   id: string;
+  user_id: string;
   name: string;
   birth_date: string | null;
   death_date: string | null;
   story: string | null;
   photo_url: string | null;
+  created_at?: string | null;
 };
 
 export default function MemorialPage() {
@@ -22,34 +24,116 @@ export default function MemorialPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    async function loadMemorial() {
-      if (!id) return;
+    let mounted = true;
+
+    async function loadPage() {
+      if (!id) {
+        if (mounted) {
+          setError(true);
+          setLoading(false);
+        }
+        return;
+      }
 
       setLoading(true);
       setError(false);
 
-      const { data, error: supabaseError } = await supabase
-        .from("memorials")
-        .select("*")
-        .eq("id", id)
-        .single();
+      try {
+        // -----------------------------------------
+        // 1. Завантажуємо публічний меморіал
+        // -----------------------------------------
+        const {
+          data: memorialData,
+          error: memorialError,
+        } = await supabase
+          .from("memorials")
+          .select(
+            "id, user_id, name, birth_date, death_date, story, photo_url, created_at"
+          )
+          .eq("id", id)
+          .maybeSingle();
 
-      if (supabaseError || !data) {
-        console.error("Помилка завантаження меморіалу:", supabaseError);
-        setError(true);
-        setMemorial(null);
-      } else {
-        setMemorial(data as Memorial);
+        if (memorialError) {
+          console.error(
+            "MEMORYUA MEMORIAL LOAD ERROR:",
+            memorialError
+          );
+
+          if (mounted) {
+            setError(true);
+            setMemorial(null);
+          }
+
+          return;
+        }
+
+        if (!memorialData) {
+          if (mounted) {
+            setError(true);
+            setMemorial(null);
+          }
+
+          return;
+        }
+
+        if (mounted) {
+          setMemorial(memorialData as Memorial);
+        }
+
+        // -----------------------------------------
+        // 2. Перевіряємо сесію
+        //
+        // ВАЖЛИВО:
+        // getSession() не кидає AuthSessionMissingError
+        // для публічного відвідувача.
+        // -----------------------------------------
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (mounted) {
+          setCurrentUserId(session?.user?.id ?? null);
+        }
+      } catch (err) {
+        console.error("MEMORYUA PAGE ERROR:", err);
+
+        if (mounted) {
+          setError(true);
+          setMemorial(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-
-      setLoading(false);
     }
 
-    loadMemorial();
+    loadPage();
+
+    // Слідкуємо за входом/виходом без перезавантаження
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [id]);
+
+  const isOwner =
+    !!currentUserId &&
+    !!memorial &&
+    currentUserId === memorial.user_id;
 
   const formatDate = (date: string | null) => {
     if (!date) return "";
@@ -68,15 +152,27 @@ export default function MemorialPage() {
   };
 
   const getMemorialUrl = () => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined") {
+      return "";
+    }
 
     return `${window.location.origin}/memorial/${id}`;
+  };
+
+  const goToEdit = () => {
+    if (!isOwner) {
+      return;
+    }
+
+    window.location.href = `/memorial/${id}/edit`;
   };
 
   const downloadQR = () => {
     const svg = qrRef.current?.querySelector("svg");
 
-    if (!svg) return;
+    if (!svg || !memorial) {
+      return;
+    }
 
     const serializer = new XMLSerializer();
     const svgString = serializer.serializeToString(svg);
@@ -89,7 +185,7 @@ export default function MemorialPage() {
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = `MEMORYUA-${memorial?.name || "memorial"}.svg`;
+    link.download = `MEMORYUA-${memorial.name || "memorial"}.svg`;
 
     document.body.appendChild(link);
     link.click();
@@ -99,33 +195,45 @@ export default function MemorialPage() {
   };
 
   const handleDeleteMemorial = async () => {
-  if (!id) return;
+    if (!id || !memorial || !isOwner) {
+      return;
+    }
 
-  const confirmed = window.confirm(
-    "Ви впевнені, що хочете назавжди видалити цей меморіал?"
-  );
+    const confirmed = window.confirm(
+      "Ви впевнені, що хочете назавжди видалити цей меморіал?"
+    );
 
-  if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
-  const { error } = await supabase
-    .from("memorials")
-    .delete()
-    .eq("id", id);
+    const { error: deleteError } = await supabase
+      .from("memorials")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", memorial.user_id);
 
-  if (error) {
-    console.error("MEMORYUA DELETE ERROR:", error);
-    alert("Не вдалося видалити меморіал.");
-    return;
-  }
+    if (deleteError) {
+      console.error(
+        "MEMORYUA DELETE ERROR:",
+        deleteError
+      );
 
-  alert("Меморіал успішно видалено.");
+      alert("Не вдалося видалити меморіал.");
+      return;
+    }
 
-  window.location.href = "/";
-};
+    alert("Меморіал успішно видалено.");
+
+    window.location.href = "/";
+  };
+
   const shareMemorial = async () => {
     const url = getMemorialUrl();
 
-    if (!url) return;
+    if (!url) {
+      return;
+    }
 
     if (navigator.share) {
       try {
@@ -155,10 +263,13 @@ export default function MemorialPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#f7f5f0] flex items-center justify-center px-4">
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f5f0] px-4">
         <div className="text-center">
           <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-800" />
-          <p className="text-slate-600">Завантаження меморіалу...</p>
+
+          <p className="text-slate-600">
+            Завантаження меморіалу...
+          </p>
         </div>
       </main>
     );
@@ -195,7 +306,7 @@ export default function MemorialPage() {
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-5">
           <button
             type="button"
             onClick={() => {
@@ -208,7 +319,7 @@ export default function MemorialPage() {
             </div>
 
             <div className="mt-1 text-xs text-slate-500">
-              Цифрова пам'ять для майбутніх поколінь
+              Цифрова пам&apos;ять для майбутніх поколінь
             </div>
           </button>
 
@@ -237,8 +348,9 @@ export default function MemorialPage() {
               <div className="flex h-64 items-center justify-center bg-slate-100 md:h-80">
                 <div className="text-center">
                   <div className="text-6xl">🕯️</div>
+
                   <p className="mt-3 text-sm text-slate-400">
-                    Світла пам'ять
+                    Світла пам&apos;ять
                   </p>
                 </div>
               </div>
@@ -247,7 +359,7 @@ export default function MemorialPage() {
             <div className="px-5 py-8 md:px-10 md:py-10">
               <div className="text-center">
                 <div className="text-sm uppercase tracking-[0.25em] text-slate-400">
-                  У пам'ять про
+                  У пам&apos;ять про
                 </div>
 
                 <h1 className="mt-3 text-3xl font-bold text-slate-900 md:text-5xl">
@@ -257,7 +369,11 @@ export default function MemorialPage() {
                 {(memorial.birth_date || memorial.death_date) && (
                   <p className="mt-4 text-lg text-slate-500">
                     {formatDate(memorial.birth_date)}
-                    {memorial.birth_date && memorial.death_date ? " — " : ""}
+
+                    {memorial.birth_date && memorial.death_date
+                      ? " — "
+                      : ""}
+
                     {formatDate(memorial.death_date)}
                   </p>
                 )}
@@ -278,30 +394,39 @@ export default function MemorialPage() {
               <div className="my-10 border-t border-slate-200" />
 
               <div className="grid gap-8 md:grid-cols-2">
+                {/* Інформація */}
                 <div className="rounded-2xl bg-slate-50 p-6 text-center">
                   <h2 className="text-lg font-semibold text-slate-800">
                     Цифровий меморіал
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Ця сторінка зберігає пам'ять про людину та доступна за
-                    унікальним посиланням MEMORYUA.
+                    Ця сторінка зберігає пам&apos;ять про людину та доступна
+                    за унікальним посиланням MEMORYUA.
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.location.href = `/memorial/${memorial.id}/edit`;
-                    }}
-                    className="mt-5 rounded-xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-                  >
-                    ✏️ Редагувати меморіал
-                  </button>
+                  {/* Кнопка бачить тільки власник */}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={goToEdit}
+                      className="mt-5 rounded-xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+                    >
+                      ✏️ Редагувати меморіал
+                    </button>
+                  )}
+
+                  {!isOwner && (
+                    <p className="mt-5 text-xs text-slate-400">
+                      Перегляд меморіалу доступний усім.
+                    </p>
+                  )}
                 </div>
 
+                {/* QR */}
                 <div className="rounded-2xl bg-slate-50 p-6 text-center">
                   <h2 className="text-lg font-semibold text-slate-800">
-                    QR-код пам'яті
+                    QR-код пам&apos;яті
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -322,45 +447,45 @@ export default function MemorialPage() {
                     />
                   </div>
 
-                  
-                          <button
-        type="button"
-        onClick={downloadQR}
-        className="mt-5 rounded-xl bg-slate-900 px-6 py-3 text-sm text-white"
-      >
-        ↓ Завантажити QR-код
-      </button>
+                  <button
+                    type="button"
+                    onClick={downloadQR}
+                    className="mt-5 rounded-xl bg-slate-900 px-6 py-3 text-sm text-white transition hover:bg-slate-700"
+                  >
+                    ↓ Завантажити QR-код
+                  </button>
 
-      <div className="mt-6 flex flex-col items-center gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            window.location.href = `/memorial/${id}/edit`;
-          }}
-          className="w-full max-w-xs rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          ✏️ Редагувати меморіал
-        </button>
+                  {/* Керування тільки для власника */}
+                  {isOwner && (
+                    <div className="mt-6 flex flex-col items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={goToEdit}
+                        className="w-full max-w-xs rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white transition hover:bg-blue-700"
+                      >
+                        ✏️ Редагувати меморіал
+                      </button>
 
-        <button
-          type="button"
-          onClick={handleDeleteMemorial}
-          className="w-full max-w-xs rounded-xl bg-red-600 px-6 py-3 text-sm font-medium text-white hover:bg-red-700"
-        >
-          🗑️ Видалити меморіал
-        </button>
-      </div>
+                      <button
+                        type="button"
+                        onClick={handleDeleteMemorial}
+                        className="w-full max-w-xs rounded-xl bg-red-600 px-6 py-3 text-sm font-medium text-white transition hover:bg-red-700"
+                      >
+                        🗑️ Видалити меморіал
+                      </button>
+                    </div>
+                  )}
 
-      <p className="mt-3 text-[11px] text-slate-400">
-        QR-код можна передати для друку на пам’ятній табличці.
-      </p>
+                  <p className="mt-3 text-[11px] text-slate-400">
+                    QR-код можна передати для друку на пам&apos;ятній табличці.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="mt-8 text-center text-xs text-slate-400">
-            MEMORYUA — цифрова пам'ять для майбутніх поколінь
+            MEMORYUA — цифрова пам&apos;ять для майбутніх поколінь
           </div>
         </div>
       </section>

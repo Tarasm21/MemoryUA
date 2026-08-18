@@ -1,16 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type Memorial = {
-  id: string;
-  name: string;
-  birthDate: string;
-  deathDate: string;
-  story: string;
-  createdAt: string;
-};
+import { supabase } from "@/lib/supabase";
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,36 +12,151 @@ export default function HomePage() {
   const [deathDate, setDeathDate] = useState("");
   const [story, setStory] = useState("");
 
-  function createMemorial(e: FormEvent<HTMLFormElement>) {
+  const [checkingUser, setCheckingUser] = useState(true);
+  const [userEmail, setUserEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          console.error("AUTH ERROR:", authError);
+          setError(authError.message);
+          setCheckingUser(false);
+          return;
+        }
+
+        if (!user) {
+          setCheckingUser(false);
+          router.push("/login");
+          return;
+        }
+
+        setUserEmail(user.email ?? "");
+        setCheckingUser(false);
+      } catch (err) {
+        console.error("Помилка перевірки авторизації:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Не вдалося перевірити авторизацію."
+        );
+
+        setCheckingUser(false);
+      }
+    }
+
+    checkUser();
+  }, [router]);
+
+  async function createMemorial(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
+    setError("");
+
     if (!name.trim()) {
-      alert("Будь ласка, введіть ім’я людини.");
+      setError("Будь ласка, введіть ім’я людини.");
       return;
     }
 
-    const id = crypto.randomUUID();
+    setSaving(true);
 
-    const memorial: Memorial = {
-      id,
-      name: name.trim(),
-      birthDate,
-      deathDate,
-      story: story.trim(),
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    // Зберігаємо меморіал у браузері
-    localStorage.setItem(
-      `memoryua-${id}`,
-      JSON.stringify(memorial)
+      if (userError) {
+        throw new Error(userError.message);
+      }
+
+      if (!user) {
+        setError("Потрібно увійти в акаунт.");
+        router.push("/login");
+        return;
+      }
+
+      console.log("MEMORYUA USER ID:", user.id);
+      console.log("MEMORYUA EMAIL:", user.email);
+
+      const id = crypto.randomUUID();
+
+      const memorialData = {
+        id: id,
+        user_id: user.id,
+        name: name.trim(),
+        birth_date: birthDate || null,
+        death_date: deathDate || null,
+        story: story.trim() || null,
+        photo_url: null,
+      };
+
+      console.log("MEMORYUA INSERT DATA:", memorialData);
+
+      const { error: insertError } = await supabase
+        .from("memorials")
+        .insert(memorialData);
+
+      if (insertError) {
+        console.error("SUPABASE INSERT ERROR:", insertError);
+
+        throw new Error(
+          `Supabase: ${insertError.message} | code: ${insertError.code || "немає"}`
+        );
+      }
+
+      console.log("MEMORYUA: МЕМОРІАЛ УСПІШНО СТВОРЕНО");
+
+      router.push(`/memorial/${id}`);
+    } catch (err) {
+      console.error("MEMORYUA CREATE ERROR:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не вдалося створити меморіал."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (checkingUser) {
+    return (
+      <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto max-w-4xl px-6 py-5">
+            <div className="text-xl font-semibold text-slate-700">
+              MEMORYUA
+            </div>
+
+            <div className="mt-1 text-sm text-slate-500">
+              Цифрова пам&apos;ять для майбутніх поколінь
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <div className="text-lg font-semibold">
+              Перевірка авторизації...
+            </div>
+
+            <div className="mt-2 text-sm text-slate-500">
+              Зачекайте, будь ласка.
+            </div>
+          </div>
+        </div>
+      </main>
     );
-
-    console.log("MEMORYUA SAVED:", memorial);
-    console.log("MEMORYUA KEY:", `memoryua-${id}`);
-
-    // Переходимо на сторінку створеного меморіалу
-    router.push(`/memorial/${id}`);
   }
 
   return (
@@ -61,8 +168,14 @@ export default function HomePage() {
           </div>
 
           <div className="mt-1 text-sm text-slate-500">
-            Цифрова пам'ять для майбутніх поколінь
+            Цифрова пам&apos;ять для майбутніх поколінь
           </div>
+
+          {userEmail && (
+            <div className="mt-2 text-xs text-slate-400">
+              Ви увійшли як: {userEmail}
+            </div>
+          )}
         </div>
       </header>
 
@@ -76,7 +189,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-4 text-lg text-slate-500">
-              Цифрова пам’ять, яка залишається назавжди
+              Цифрова пам&apos;ять, яка залишається назавжди
             </p>
 
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">
@@ -92,10 +205,16 @@ export default function HomePage() {
               Створити меморіал
             </h2>
 
+            {error && (
+              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-5">
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Ім’я та прізвище
+                  Ім&apos;я та прізвище
                 </label>
 
                 <input
@@ -103,7 +222,9 @@ export default function HomePage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Наприклад: Іван Петренко"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                  disabled={saving}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 disabled:bg-slate-100"
+                  required
                 />
               </div>
 
@@ -117,7 +238,8 @@ export default function HomePage() {
                     type="date"
                     value={birthDate}
                     onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                    disabled={saving}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 disabled:bg-slate-100"
                   />
                 </div>
 
@@ -130,7 +252,8 @@ export default function HomePage() {
                     type="date"
                     value={deathDate}
                     onChange={(e) => setDeathDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                    disabled={saving}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 disabled:bg-slate-100"
                   />
                 </div>
               </div>
@@ -145,15 +268,19 @@ export default function HomePage() {
                   onChange={(e) => setStory(e.target.value)}
                   placeholder="Напишіть історію життя, спогади, важливі моменти..."
                   rows={8}
-                  className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500"
+                  disabled={saving}
+                  className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 disabled:bg-slate-100"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-slate-800 px-6 py-4 font-semibold text-white transition hover:bg-slate-700"
+                disabled={saving}
+                className="w-full rounded-xl bg-slate-800 px-6 py-4 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Створити меморіал
+                {saving
+                  ? "Створення меморіалу..."
+                  : "Створити меморіал"}
               </button>
             </div>
           </form>
@@ -161,7 +288,7 @@ export default function HomePage() {
 
         <div className="mt-8 text-center">
           <p className="text-sm text-slate-500">
-            MEMORYUA — пам’ять, яка залишається.
+            MEMORYUA — пам&apos;ять, яка залишається.
           </p>
         </div>
       </section>
