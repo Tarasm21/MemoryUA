@@ -16,11 +16,20 @@ type Memorial = {
   created_at?: string | null;
 };
 
+type MemorialPhoto = {
+  id: string;
+  memorial_id: string;
+  user_id: string;
+  photo_url: string;
+  created_at: string;
+};
+
 export default function MemorialPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
   const [memorial, setMemorial] = useState<Memorial | null>(null);
+  const [photos, setPhotos] = useState<MemorialPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -45,7 +54,7 @@ export default function MemorialPage() {
 
       try {
         // -----------------------------------------
-        // 1. Завантажуємо публічний меморіал
+        // 1. Завантажуємо меморіал
         // -----------------------------------------
         const {
           data: memorialData,
@@ -86,11 +95,37 @@ export default function MemorialPage() {
         }
 
         // -----------------------------------------
-        // 2. Перевіряємо сесію
-        //
-        // ВАЖЛИВО:
-        // getSession() не кидає AuthSessionMissingError
-        // для публічного відвідувача.
+        // 2. Завантажуємо галерею
+        // -----------------------------------------
+        const {
+          data: photosData,
+          error: photosError,
+        } = await supabase
+          .from("memorial_photos")
+          .select(
+            "id, memorial_id, user_id, photo_url, created_at"
+          )
+          .eq("memorial_id", id)
+          .order("created_at", {
+            ascending: false,
+          });
+
+        if (photosError) {
+          console.error(
+            "MEMORYUA PHOTOS LOAD ERROR:",
+            photosError
+          );
+
+          // Галерея не повинна ламати сам меморіал.
+          if (mounted) {
+            setPhotos([]);
+          }
+        } else if (mounted) {
+          setPhotos((photosData ?? []) as MemorialPhoto[]);
+        }
+
+        // -----------------------------------------
+        // 3. Перевіряємо сесію
         // -----------------------------------------
         const {
           data: { session },
@@ -115,7 +150,6 @@ export default function MemorialPage() {
 
     loadPage();
 
-    // Слідкуємо за входом/виходом без перезавантаження
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -247,7 +281,7 @@ export default function MemorialPage() {
           url,
         });
       } catch {
-        // Користувач просто закрив вікно поширення
+        // Користувач закрив вікно поширення
       }
 
       return;
@@ -336,6 +370,7 @@ export default function MemorialPage() {
       <section className="px-4 py-8 md:py-12">
         <div className="mx-auto max-w-5xl">
           <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
+            {/* ГОЛОВНЕ ФОТО */}
             {memorial.photo_url ? (
               <div className="bg-slate-100">
                 <img
@@ -357,6 +392,7 @@ export default function MemorialPage() {
             )}
 
             <div className="px-5 py-8 md:px-10 md:py-10">
+              {/* ІМ'Я */}
               <div className="text-center">
                 <div className="text-sm uppercase tracking-[0.25em] text-slate-400">
                   У пам&apos;ять про
@@ -379,6 +415,7 @@ export default function MemorialPage() {
                 )}
               </div>
 
+              {/* ІСТОРІЯ */}
               {memorial.story && (
                 <div className="mx-auto mt-10 max-w-3xl">
                   <div className="mb-4 text-center text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -391,10 +428,51 @@ export default function MemorialPage() {
                 </div>
               )}
 
+              {/* ГАЛЕРЕЯ */}
+              {photos.length > 0 && (
+                <>
+                  <div className="my-10 border-t border-slate-200" />
+
+                  <section>
+                    <div className="text-center">
+                      <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Фотографії пам&apos;яті
+                      </div>
+
+                      <h2 className="mt-2 text-2xl font-semibold text-slate-800">
+                        Галерея
+                      </h2>
+
+                      <p className="mt-2 text-sm text-slate-500">
+                        Спогади, які залишаються з нами.
+                      </p>
+                    </div>
+
+                    <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3">
+                      {photos.map((photo) => (
+                        <a
+                          key={photo.id}
+                          href={photo.photo_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group overflow-hidden rounded-2xl bg-slate-100 shadow-sm"
+                        >
+                          <img
+                            src={photo.photo_url}
+                            alt={`Фотографія — ${memorial.name}`}
+                            className="aspect-square w-full object-cover transition duration-300 group-hover:scale-105"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+
               <div className="my-10 border-t border-slate-200" />
 
               <div className="grid gap-8 md:grid-cols-2">
-                {/* Інформація */}
+                {/* ІНФОРМАЦІЯ */}
                 <div className="rounded-2xl bg-slate-50 p-6 text-center">
                   <h2 className="text-lg font-semibold text-slate-800">
                     Цифровий меморіал
@@ -405,7 +483,6 @@ export default function MemorialPage() {
                     за унікальним посиланням MEMORYUA.
                   </p>
 
-                  {/* Кнопка бачить тільки власник */}
                   {isOwner && (
                     <button
                       type="button"
@@ -455,7 +532,6 @@ export default function MemorialPage() {
                     ↓ Завантажити QR-код
                   </button>
 
-                  {/* Керування тільки для власника */}
                   {isOwner && (
                     <div className="mt-6 flex flex-col items-center gap-3">
                       <button

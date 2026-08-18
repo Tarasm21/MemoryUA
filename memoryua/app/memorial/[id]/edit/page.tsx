@@ -19,6 +19,14 @@ type Memorial = {
   created_at?: string | null;
 };
 
+type GalleryPhoto = {
+  id: string;
+  memorial_id: string;
+  user_id: string;
+  photo_url: string;
+  created_at?: string | null;
+};
+
 const PHOTO_BUCKET = "memorial-photos";
 
 function formatDateForInput(value: string | null) {
@@ -59,9 +67,17 @@ export default function EditMemorialPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
 
+  const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>(
+    []
+  );
+
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -93,12 +109,16 @@ export default function EditMemorialPage() {
           );
         }
 
-        const { data, error: fetchError } = await supabase
+        const {
+          data,
+          error: fetchError,
+        } = await supabase
           .from("memorials")
           .select(
             "id, name, birth_date, death_date, story, photo_url, created_at"
           )
           .eq("id", id)
+          .eq("user_id", user.id)
           .maybeSingle();
 
         if (fetchError) {
@@ -115,13 +135,44 @@ export default function EditMemorialPage() {
 
         setMemorial(loadedMemorial);
         setName(loadedMemorial.name ?? "");
-        setBirthDate(formatDateForInput(loadedMemorial.birth_date));
-        setDeathDate(formatDateForInput(loadedMemorial.death_date));
+        setBirthDate(
+          formatDateForInput(loadedMemorial.birth_date)
+        );
+        setDeathDate(
+          formatDateForInput(loadedMemorial.death_date)
+        );
         setStory(loadedMemorial.story ?? "");
         setPhotoUrl(loadedMemorial.photo_url ?? "");
         setPreviewUrl(loadedMemorial.photo_url ?? "");
+
+        const {
+          data: galleryData,
+          error: galleryError,
+        } = await supabase
+          .from("memorial_photos")
+          .select(
+            "id, memorial_id, user_id, photo_url, created_at"
+          )
+          .eq("memorial_id", id)
+          .order("created_at", {
+            ascending: false,
+          });
+
+        if (galleryError) {
+          console.error(
+            "MEMORYUA GALLERY LOAD ERROR:",
+            galleryError
+          );
+        } else {
+          setGalleryPhotos(
+            (galleryData ?? []) as GalleryPhoto[]
+          );
+        }
       } catch (err) {
-        console.error("Помилка завантаження меморіалу:", err);
+        console.error(
+          "MEMORYUA EDIT LOAD ERROR:",
+          err
+        );
 
         setError(
           err instanceof Error
@@ -135,13 +186,6 @@ export default function EditMemorialPage() {
 
     loadMemorial();
   }, [id]);
-
-  function handleDateChange(
-    setter: (value: string) => void,
-    event: ChangeEvent<HTMLInputElement>
-  ) {
-    setter(event.target.value);
-  }
 
   function handlePhotoSelect(
     event: ChangeEvent<HTMLInputElement>
@@ -175,7 +219,7 @@ export default function EditMemorialPage() {
     setPreviewUrl(localPreview);
   }
 
-  function removePhoto() {
+  function removeMainPhoto() {
     setSelectedFile(null);
     setPhotoUrl("");
     setPreviewUrl("");
@@ -190,7 +234,63 @@ export default function EditMemorialPage() {
     }
   }
 
-  async function uploadPhoto(userId: string) {
+  function handleGallerySelect(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    setError("");
+    setSuccess("");
+
+    const files = Array.from(event.target.files ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const maxSize = 10 * 1024 * 1024;
+
+    const invalidFile = files.find(
+      (file) =>
+        !file.type.startsWith("image/") ||
+        file.size > maxSize
+    );
+
+    if (invalidFile) {
+      setError(
+        "Усі фотографії повинні бути зображеннями та не перевищувати 10 МБ кожна."
+      );
+
+      event.target.value = "";
+      return;
+    }
+
+    setGalleryFiles(files);
+
+    const previews = files.map((file) =>
+      URL.createObjectURL(file)
+    );
+
+    setGalleryPreviews(previews);
+  }
+
+  function removeGallerySelectedFile(index: number) {
+    setGalleryFiles((current) =>
+      current.filter((_, i) => i !== index)
+    );
+
+    setGalleryPreviews((current) => {
+      const url = current[index];
+
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+
+      return current.filter((_, i) => i !== index);
+    });
+  }
+
+  async function uploadMainPhoto(
+    userId: string
+  ) {
     if (!selectedFile) {
       return photoUrl || null;
     }
@@ -198,45 +298,244 @@ export default function EditMemorialPage() {
     setUploading(true);
 
     try {
-      const fileExtension =
-        selectedFile.name.split(".").pop()?.toLowerCase() || "jpg";
+      const extension =
+        selectedFile.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() || "jpg";
 
-      const safeExtension = fileExtension.replace(
+      const safeExtension = extension.replace(
         /[^a-z0-9]/g,
         ""
       );
 
       const fileName = `${crypto.randomUUID()}.${safeExtension}`;
 
-      const filePath = `${userId}/${id}/${fileName}`;
+      const filePath =
+        `${userId}/${id}/main/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const {
+        error: uploadError,
+      } = await supabase.storage
         .from(PHOTO_BUCKET)
-        .upload(filePath, selectedFile, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: selectedFile.type,
-        });
+        .upload(
+          filePath,
+          selectedFile,
+          {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: selectedFile.type,
+          }
+        );
 
       if (uploadError) {
         throw new Error(
-          `Не вдалося завантажити фотографію: ${uploadError.message}`
+          `Не вдалося завантажити основне фото: ${uploadError.message}`
         );
       }
 
-      const { data: publicUrlData } = supabase.storage
+      const {
+        data: publicUrlData,
+      } = supabase.storage
         .from(PHOTO_BUCKET)
         .getPublicUrl(filePath);
 
       if (!publicUrlData?.publicUrl) {
         throw new Error(
-          "Фотографію завантажено, але не вдалося отримати її адресу."
+          "Не вдалося отримати адресу основного фото."
         );
       }
 
       return publicUrlData.publicUrl;
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function uploadGalleryPhotos(
+    userId: string
+  ) {
+    if (galleryFiles.length === 0) {
+      return;
+    }
+
+    setUploadingGallery(true);
+
+    try {
+      for (const file of galleryFiles) {
+        const extension =
+          file.name
+            .split(".")
+            .pop()
+            ?.toLowerCase() || "jpg";
+
+        const safeExtension = extension.replace(
+          /[^a-z0-9]/g,
+          ""
+        );
+
+        const fileName =
+          `${crypto.randomUUID()}.${safeExtension}`;
+
+        const filePath =
+          `${userId}/${id}/gallery/${fileName}`;
+
+        const {
+          error: uploadError,
+        } = await supabase.storage
+          .from(PHOTO_BUCKET)
+          .upload(
+            filePath,
+            file,
+            {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: file.type,
+            }
+          );
+
+        if (uploadError) {
+          throw new Error(
+            `Не вдалося завантажити фото "${file.name}": ${uploadError.message}`
+          );
+        }
+
+        const {
+          data: publicUrlData,
+        } = supabase.storage
+          .from(PHOTO_BUCKET)
+          .getPublicUrl(filePath);
+
+        const publicUrl =
+          publicUrlData?.publicUrl;
+
+        if (!publicUrl) {
+          throw new Error(
+            `Не вдалося отримати адресу фото "${file.name}".`
+          );
+        }
+
+        const {
+          error: insertError,
+        } = await supabase
+          .from("memorial_photos")
+          .insert({
+            id: crypto.randomUUID(),
+            memorial_id: id,
+            user_id: userId,
+            photo_url: publicUrl,
+          });
+
+        if (insertError) {
+          throw new Error(
+            `Фото завантажено, але не вдалося зберегти його в галереї: ${insertError.message}`
+          );
+        }
+      }
+
+      const {
+        data: updatedGallery,
+        error: galleryError,
+      } = await supabase
+        .from("memorial_photos")
+        .select(
+          "id, memorial_id, user_id, photo_url, created_at"
+        )
+        .eq("memorial_id", id)
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (galleryError) {
+        throw new Error(
+          `Не вдалося оновити галерею: ${galleryError.message}`
+        );
+      }
+
+      setGalleryPhotos(
+        (updatedGallery ?? []) as GalleryPhoto[]
+      );
+
+      galleryPreviews.forEach((url) =>
+        URL.revokeObjectURL(url)
+      );
+
+      setGalleryFiles([]);
+      setGalleryPreviews([]);
+
+      const galleryInput =
+        document.getElementById(
+          "gallery"
+        ) as HTMLInputElement | null;
+
+      if (galleryInput) {
+        galleryInput.value = "";
+      }
+    } finally {
+      setUploadingGallery(false);
+    }
+  }
+
+  async function deleteGalleryPhoto(
+    photo: GalleryPhoto
+  ) {
+    const confirmed = window.confirm(
+      "Видалити цю фотографію з галереї?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error(
+          "Потрібно увійти в акаунт."
+        );
+      }
+
+      const {
+        error: deleteError,
+      } = await supabase
+        .from("memorial_photos")
+        .delete()
+        .eq("id", photo.id)
+        .eq("memorial_id", id)
+        .eq("user_id", user.id);
+
+      if (deleteError) {
+        throw new Error(
+          deleteError.message
+        );
+      }
+
+      setGalleryPhotos((current) =>
+        current.filter(
+          (item) => item.id !== photo.id
+        )
+      );
+
+      setSuccess(
+        "Фотографію видалено з галереї."
+      );
+    } catch (err) {
+      console.error(
+        "MEMORYUA GALLERY DELETE ERROR:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не вдалося видалити фотографію."
+      );
     }
   }
 
@@ -276,21 +575,30 @@ export default function EditMemorialPage() {
         );
       }
 
-      let finalPhotoUrl = photoUrl.trim() || null;
+      let finalPhotoUrl =
+        photoUrl.trim() || null;
 
       if (selectedFile) {
-        finalPhotoUrl = await uploadPhoto(user.id);
+        finalPhotoUrl =
+          await uploadMainPhoto(user.id);
       }
 
       const updateData = {
         name: name.trim(),
-        birth_date: birthDate || null,
-        death_date: deathDate || null,
-        story: story.trim() || null,
-        photo_url: finalPhotoUrl,
+        birth_date:
+          birthDate || null,
+        death_date:
+          deathDate || null,
+        story:
+          story.trim() || null,
+        photo_url:
+          finalPhotoUrl,
       };
 
-      const { data, error: updateError } = await supabase
+      const {
+        data,
+        error: updateError,
+      } = await supabase
         .from("memorials")
         .update(updateData)
         .eq("id", id)
@@ -301,29 +609,39 @@ export default function EditMemorialPage() {
         .maybeSingle();
 
       if (updateError) {
-        throw new Error(updateError.message);
+        throw new Error(
+          updateError.message
+        );
       }
 
       if (!data) {
         throw new Error(
-          "Меморіал не оновлено. Перевірте, що цей меморіал належить вашому акаунту."
+          "Меморіал не оновлено. Перевірте, що він належить вашому акаунту."
         );
       }
 
-      const updatedMemorial = data as Memorial;
+      const updatedMemorial =
+        data as Memorial;
 
       setMemorial(updatedMemorial);
-      setPhotoUrl(updatedMemorial.photo_url ?? "");
-      setPreviewUrl(updatedMemorial.photo_url ?? "");
+      setPhotoUrl(
+        updatedMemorial.photo_url ?? ""
+      );
+      setPreviewUrl(
+        updatedMemorial.photo_url ?? ""
+      );
       setSelectedFile(null);
 
-      setSuccess("Зміни успішно збережено.");
+      await uploadGalleryPhotos(user.id);
 
-      setTimeout(() => {
-        router.push(`/memorial/${id}`);
-      }, 800);
+      setSuccess(
+        "Зміни успішно збережено."
+      );
     } catch (err) {
-      console.error("Помилка збереження меморіалу:", err);
+      console.error(
+        "MEMORYUA SAVE ERROR:",
+        err
+      );
 
       setError(
         err instanceof Error
@@ -350,7 +668,7 @@ export default function EditMemorialPage() {
           </div>
         </header>
 
-        <div className="mx-auto max-w-2xl px-6 py-16">
+        <div className="mx-auto max-w-3xl px-6 py-16">
           <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <div className="text-lg font-semibold">
               Завантаження меморіалу...
@@ -379,7 +697,7 @@ export default function EditMemorialPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-8 text-center">
             <div className="mb-2 text-sm font-medium uppercase tracking-wider text-slate-400">
@@ -391,7 +709,7 @@ export default function EditMemorialPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-500">
-              Змініть інформацію та збережіть оновлення.
+              Змініть інформацію, основне фото та додайте фотографії до галереї.
             </p>
           </div>
 
@@ -407,7 +725,10 @@ export default function EditMemorialPage() {
             </div>
           )}
 
-          <form onSubmit={handleSave} className="space-y-6">
+          <form
+            onSubmit={handleSave}
+            className="space-y-6"
+          >
             <div>
               <label className="mb-2 block text-sm font-semibold">
                 Ім&apos;я та прізвище
@@ -416,9 +737,12 @@ export default function EditMemorialPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
                 placeholder="Введіть ім'я та прізвище"
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                disabled={saving}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
                 required
               />
             </div>
@@ -433,9 +757,10 @@ export default function EditMemorialPage() {
                   type="date"
                   value={birthDate}
                   onChange={(e) =>
-                    handleDateChange(setBirthDate, e)
+                    setBirthDate(e.target.value)
                   }
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  disabled={saving}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
                 />
               </div>
 
@@ -448,9 +773,10 @@ export default function EditMemorialPage() {
                   type="date"
                   value={deathDate}
                   onChange={(e) =>
-                    handleDateChange(setDeathDate, e)
+                    setDeathDate(e.target.value)
                   }
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  disabled={saving}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
                 />
               </div>
             </div>
@@ -462,20 +788,27 @@ export default function EditMemorialPage() {
 
               <textarea
                 value={story}
-                onChange={(e) => setStory(e.target.value)}
+                onChange={(e) =>
+                  setStory(e.target.value)
+                }
                 placeholder="Напишіть історію, спогади або слова пам'яті..."
                 rows={8}
-                className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                disabled={saving}
+                className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
               />
             </div>
 
+            {/* ОСНОВНЕ ФОТО */}
             <div>
-              <label
-                htmlFor="photo"
-                className="mb-2 block text-sm font-semibold"
-              >
-                Фотографія
-              </label>
+              <div className="mb-3">
+                <h2 className="text-lg font-bold text-slate-900">
+                  🖼️ Основне фото
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Це фото буде головним на сторінці меморіалу.
+                </p>
+              </div>
 
               <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <input
@@ -483,7 +816,11 @@ export default function EditMemorialPage() {
                   type="file"
                   accept="image/*"
                   onChange={handlePhotoSelect}
-                  disabled={saving || uploading}
+                  disabled={
+                    saving ||
+                    uploading ||
+                    uploadingGallery
+                  }
                   className="block w-full cursor-pointer text-sm text-slate-600"
                 />
 
@@ -496,23 +833,21 @@ export default function EditMemorialPage() {
                 <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                   <img
                     src={previewUrl}
-                    alt="Фотографія меморіалу"
+                    alt="Основне фото меморіалу"
                     className="max-h-[500px] w-full object-contain"
-                    onError={() => {
-                      setError(
-                        "Не вдалося відобразити фотографію."
-                      );
-                    }}
                   />
 
                   <div className="flex justify-center border-t border-slate-200 bg-white p-3">
                     <button
                       type="button"
-                      onClick={removePhoto}
-                      disabled={saving || uploading}
-                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={removeMainPhoto}
+                      disabled={
+                        saving ||
+                        uploading
+                      }
+                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
                     >
-                      Видалити фотографію
+                      Видалити основне фото
                     </button>
                   </div>
                 </div>
@@ -520,29 +855,197 @@ export default function EditMemorialPage() {
 
               {!previewUrl && (
                 <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
-                  Фотографію ще не додано.
+                  Основне фото ще не додано.
                 </div>
               )}
             </div>
 
-            <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+            {/* ФОТОГАЛЕРЕЯ */}
+            <div className="border-t border-slate-200 pt-8">
+              <div className="mb-4">
+                <h2 className="text-2xl font-bold text-slate-900">
+                  📸 Фотогалерея
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Додайте додаткові фотографії, які хочете зберегти
+                  на сторінці цього меморіалу.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6">
+                <label
+                  htmlFor="gallery"
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-8 text-center transition hover:bg-slate-50"
+                >
+                  <div className="text-4xl">
+                    📷
+                  </div>
+
+                  <div className="mt-3 text-base font-semibold text-slate-800">
+                    Додати фотографії
+                  </div>
+
+                  <div className="mt-1 text-sm text-slate-500">
+                    Можна вибрати декілька фотографій одразу
+                  </div>
+
+                  <div className="mt-3 rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white">
+                    Вибрати фото
+                  </div>
+                </label>
+
+                <input
+                  id="gallery"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleGallerySelect}
+                  disabled={
+                    saving ||
+                    uploading ||
+                    uploadingGallery
+                  }
+                  className="hidden"
+                />
+
+                <p className="mt-4 text-center text-xs text-slate-400">
+                  Кожне фото — максимум 10 МБ.
+                </p>
+              </div>
+
+              {/* ВИБРАНІ ФОТО, ЯКІ ЩЕ НЕ ЗАВАНТАЖЕНІ */}
+              {galleryFiles.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="mb-3 text-sm font-semibold text-slate-700">
+                    Нові фотографії
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {galleryPreviews.map(
+                      (preview, index) => (
+                        <div
+                          key={preview}
+                          className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+                        >
+                          <img
+                            src={preview}
+                            alt={`Нове фото ${index + 1}`}
+                            className="h-40 w-full object-cover"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeGallerySelectedFile(
+                                index
+                              )
+                            }
+                            disabled={
+                              saving ||
+                              uploadingGallery
+                            }
+                            className="absolute right-2 top-2 rounded-lg bg-red-600 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                    Вибрано фотографій:{" "}
+                    <strong>
+                      {galleryFiles.length}
+                    </strong>
+                    . Натисніть «Зберегти зміни», щоб завантажити їх.
+                  </div>
+                </div>
+              )}
+
+              {/* ВЖЕ ЗАВАНТАЖЕНА ГАЛЕРЕЯ */}
+              <div className="mt-8">
+                <h3 className="mb-4 text-lg font-semibold text-slate-800">
+                  Збережені фотографії
+                </h3>
+
+                {galleryPhotos.length === 0 ? (
+                  <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+                    Фотогалерея поки порожня.
+                    <br />
+                    Додайте перші фотографії вище.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {galleryPhotos.map(
+                      (photo, index) => (
+                        <div
+                          key={photo.id}
+                          className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
+                        >
+                          <img
+                            src={photo.photo_url}
+                            alt={`Фотографія ${index + 1}`}
+                            className="h-48 w-full object-cover transition duration-300 group-hover:scale-105"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              deleteGalleryPhoto(
+                                photo
+                              )
+                            }
+                            disabled={
+                              saving ||
+                              uploadingGallery
+                            }
+                            className="absolute right-2 top-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white opacity-90 shadow-sm transition hover:bg-red-700"
+                          >
+                            🗑️ Видалити
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* КНОПКИ */}
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row">
               <button
                 type="submit"
-                disabled={saving || uploading}
-                className="flex-1 rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={
+                  saving ||
+                  uploading ||
+                  uploadingGallery
+                }
+                className="flex-1 rounded-xl bg-slate-900 px-6 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {uploading
-                  ? "Завантаження фото..."
-                  : saving
-                    ? "Збереження..."
-                    : "Зберегти зміни"}
+                  ? "Завантаження основного фото..."
+                  : uploadingGallery
+                    ? "Завантаження галереї..."
+                    : saving
+                      ? "Збереження..."
+                      : "Зберегти зміни"}
               </button>
 
               <button
                 type="button"
-                onClick={() => router.push(`/memorial/${id}`)}
-                disabled={saving || uploading}
-                className="flex-1 rounded-xl border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() =>
+                  router.push(
+                    `/memorial/${id}`
+                  )
+                }
+                disabled={
+                  saving ||
+                  uploading ||
+                  uploadingGallery
+                }
+                className="flex-1 rounded-xl border border-slate-300 bg-white px-6 py-4 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Скасувати
               </button>
