@@ -1,3 +1,11 @@
-node_modules
-.vercel
 .env*
+.vercel/
+.next/
+node_modules/
+
+memoryua/.env*
+memoryua/.vercel/
+memoryua/.next/
+memoryua/node_modules/
+memoryua/*.log
+memoryua/tsconfig.tsbuildinfo
