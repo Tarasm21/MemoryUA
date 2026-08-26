@@ -9,10 +9,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   );
 
-  const { data: memorials } = await supabase
+  const { data: memorials, error } = await supabase
     .from("memorials")
     .select("id, created_at")
     .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("SITEMAP ERROR:", error);
+  }
 
   const memorialUrls: MetadataRoute.Sitemap =
     (memorials ?? []).map((memorial) => ({
@@ -25,12 +29,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
 
   return [
+    // ГОЛОВНА
     {
       url: baseUrl,
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 1,
     },
+
+    // КНИГА ПАМ'ЯТІ
+    {
+      url: `${baseUrl}/memorials`,
+      lastModified: new Date(),
+      changeFrequency: "daily",
+      priority: 0.9,
+    },
+
+    // УСІ МЕМОРІАЛИ
     ...memorialUrls,
   ];
 }
