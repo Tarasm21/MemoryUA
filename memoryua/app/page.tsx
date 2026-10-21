@@ -11,14 +11,19 @@ export default function HomePage() {
   const [deathDate, setDeathDate] = useState("");
   const [story, setStory] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const createMemorial = async (
-    event: FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
 
     if (!name.trim()) {
-      alert("Введіть ім'я людини.");
+      setError("Введіть ім’я та прізвище.");
+      return;
+    }
+
+    if (birthDate && deathDate && birthDate > deathDate) {
+      setError("Дата народження не може бути пізнішою за дату смерті.");
       return;
     }
 
@@ -32,590 +37,330 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           name: name.trim(),
-          birth_date: birthDate || null,
-          death_date: deathDate || null,
-          story: story.trim() || null,
+          birthDate,
+          deathDate,
+          story: story.trim(),
         }),
       });
 
-      const result = await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result?.error ||
-            "Не вдалося створити меморіал."
+          data.error || data.message || "Не вдалося створити меморіал."
         );
       }
 
-      if (!result?.id) {
-        throw new Error(
-          "Меморіал створено, але ID не отримано."
-        );
+      const memorialId = data.id || data.memorial?.id;
+
+      if (!memorialId) {
+        throw new Error("Меморіал створено, але сервер не повернув його ID.");
       }
 
-      router.push(`/memorial/${result.id}`);
-    } catch (error) {
-      console.error(
-        "MEMORYUA CREATE ERROR:",
-        error
-      );
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Не вдалося створити меморіал."
+      router.push(`/memorial/${memorialId}`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Сталася помилка. Спробуйте ще раз."
       );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <main className="min-h-screen bg-[#f7f5f0] text-slate-800">
+    <main className="min-h-screen bg-[#f5f3ee] text-[#252820]">
+      {/* ШАПКА САЙТУ */}
+      <header className="relative z-10 border-b border-white/20 bg-[#182019] text-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5">
+          <a href="/" className="text-2xl font-bold tracking-[0.18em]">
+            MEMORYUA
+          </a>
 
-      {/* HEADER */}
-
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5">
-
-          <button
-            type="button"
-            onClick={() => {
-              window.location.href = "/";
-            }}
-            className="text-left"
-          >
-            <div className="text-xl font-bold tracking-[0.18em] text-slate-900">
-              MEMORYUA
-            </div>
-
-            <div className="mt-1 text-xs text-slate-500">
-              Цифрова пам&apos;ять для
-              майбутніх поколінь
-            </div>
-          </button>
-
-          {/* ГОЛОВНЕ МЕНЮ */}
-
-          <div className="flex flex-wrap items-center gap-2">
-
-            {/* МОЇ МЕМОРІАЛИ */}
-
-            <button
-              type="button"
-              onClick={() => {
-                router.push("/my-memorials");
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          <nav className="flex flex-wrap items-center gap-5 text-sm text-white/85">
+            <a href="/my-memorials" className="transition hover:text-white">
+              Мої меморіали
+            </a>
+            <a href="/pricing" className="transition hover:text-white">
+              Тарифи
+            </a>
+            <a href="/memorials" className="transition hover:text-white">
+              Книга пам’яті
+            </a>
+            <a
+              href="/login"
+              className="rounded-full border border-white/40 px-5 py-2 transition hover:bg-white/10"
             >
-              🕯️ Мої меморіали
-            </button>
-
-            {/* ТАРИФИ */}
-
-            <button
-              type="button"
-              onClick={() => {
-                router.push("/pricing");
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              💳 Тарифи
-            </button>
-
-            {/* КНИГА ПАМ'ЯТІ */}
-
-            <button
-              type="button"
-              onClick={() => {
-                router.push("/memorials");
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              📖 Книга пам&apos;яті
-            </button>
-
-          </div>
-
+              Увійти
+            </a>
+          </nav>
         </div>
       </header>
 
-      {/* HERO */}
+      {/* ГОЛОВНИЙ ЕКРАН І ФОНОВЕ ЗОБРАЖЕННЯ */}
+      <section
+        className="relative isolate overflow-hidden bg-cover bg-center bg-no-repeat px-5 py-20 md:py-32"
+        style={{
+  backgroundImage:
+    "linear-gradient(rgba(10,15,18,0.25), rgba(10,15,18,0.45)), url('/memoryua-background.png')",
+  backgroundSize: "cover",
+  backgroundPosition: "center center",
+  backgroundRepeat: "no-repeat",
+}}
+      >
+        <div className="relative mx-auto max-w-5xl text-center text-white">
+          <p className="mb-6 text-sm font-medium uppercase tracking-[0.32em] text-white/80 md:text-base">
+            Цифрова пам’ять для майбутніх поколінь
+          </p>
 
-      <section className="px-4 py-12 md:py-20">
-        <div className="mx-auto max-w-6xl">
+          <h1 className="mx-auto max-w-4xl text-4xl font-semibold leading-tight md:text-6xl">
+            Пам’ять, яка залишається назавжди
+          </h1>
 
-          <div className="mx-auto max-w-3xl text-center">
+          <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-white/85 md:text-lg">
+            Створіть цифровий меморіал близької людини, збережіть її історію,
+            фотографії та спогади. Поділіться пам’яттю за допомогою QR-коду.
+          </p>
 
-            <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-400">
-              MEMORYUA
-            </div>
+          <div className="mt-9 flex flex-wrap justify-center gap-4">
+            <a
+              href="#create-memorial"
+              className="rounded-full bg-[#e9dfc8] px-8 py-3.5 font-semibold text-[#292c23] shadow-lg transition hover:bg-white"
+            >
+              Створити меморіал
+            </a>
 
-            <h1 className="mt-4 text-4xl font-bold leading-tight text-slate-900 md:text-6xl">
-              Цифрова пам&apos;ять
-              <br />
-              для майбутніх поколінь
-            </h1>
+            <a
+              href="/memorials"
+              className="rounded-full border border-white/60 bg-black/20 px-8 py-3.5 font-medium text-white transition hover:bg-white/15"
+            >
+              Книга пам’яті
+            </a>
+          </div>
+        </div>
+      </section>
 
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-slate-500 md:text-lg">
-              Створіть цифровий меморіал,
-              збережіть історію людини,
-              фотографії та теплі слова
-              пам&apos;яті.
+      {/* ФОРМА СТВОРЕННЯ МЕМОРІАЛУ */}
+      <section id="create-memorial" className="px-5 py-16 md:py-24">
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-10 text-center">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#77735f]">
+              Збережіть історію
             </p>
 
+            <h2 className="text-3xl font-semibold md:text-4xl">
+              Створити меморіал
+            </h2>
+
+            <p className="mx-auto mt-4 max-w-xl leading-7 text-[#69695f]">
+              Заповніть основну інформацію, щоб створити персональну сторінку
+              пам’яті.
+            </p>
           </div>
 
-          {/* ГОЛОВНІ КНОПКИ */}
-
-          <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row">
-
-            <button
-              type="button"
-              onClick={() => {
-                router.push("/memorials");
-              }}
-              className="flex-1 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
-            >
-              📖 Відкрити Книгу пам&apos;яті
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                document
-                  .getElementById("create-memorial")
-                  ?.scrollIntoView({
-                    behavior: "smooth",
-                  });
-              }}
-              className="flex-1 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
-            >
-              🕯️ Створити меморіал
-            </button>
-
-          </div>
-
-          {/* ФОРМА СТВОРЕННЯ */}
-
-          <div
-            id="create-memorial"
-            className="mx-auto mt-12 max-w-3xl rounded-3xl bg-white p-6 shadow-sm md:p-10"
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-2xl border border-[#e3dfd3] bg-white p-6 shadow-sm md:p-9"
           >
-
-            <div className="text-center">
-
-              <div className="text-4xl">
-                🕯️
-              </div>
-
-              <h2 className="mt-4 text-2xl font-bold text-slate-900 md:text-3xl">
-                Створити цифровий меморіал
-              </h2>
-
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                Заповніть основну інформацію
-                про людину.
-              </p>
-
-            </div>
-
-            <form
-              onSubmit={createMemorial}
-              className="mt-8"
-            >
-
-              {/* ІМ'Я */}
-
+            <div className="space-y-6">
               <div>
                 <label
                   htmlFor="name"
-                  className="mb-2 block text-sm font-medium text-slate-700"
+                  className="mb-2 block text-sm font-medium"
                 >
-                  Ім&apos;я та прізвище
+                  Ім’я та прізвище *
                 </label>
-
                 <input
                   id="name"
                   type="text"
                   value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="Наприклад: Іван Петренко"
-                  maxLength={150}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Введіть ім’я та прізвище"
                   required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  className="w-full rounded-xl border border-[#d8d5ca] bg-[#fdfcf9] px-4 py-3 outline-none transition focus:border-[#777d66] focus:ring-2 focus:ring-[#777d66]/15"
                 />
               </div>
 
-              {/* ДАТИ */}
-
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
-
+              <div className="grid gap-6 sm:grid-cols-2">
                 <div>
                   <label
                     htmlFor="birthDate"
-                    className="mb-2 block text-sm font-medium text-slate-700"
+                    className="mb-2 block text-sm font-medium"
                   >
                     Дата народження
                   </label>
-
                   <input
                     id="birthDate"
                     type="date"
                     value={birthDate}
-                    onChange={(event) =>
-                      setBirthDate(event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    className="w-full rounded-xl border border-[#d8d5ca] bg-[#fdfcf9] px-4 py-3 outline-none transition focus:border-[#777d66] focus:ring-2 focus:ring-[#777d66]/15"
                   />
                 </div>
 
                 <div>
                   <label
                     htmlFor="deathDate"
-                    className="mb-2 block text-sm font-medium text-slate-700"
+                    className="mb-2 block text-sm font-medium"
                   >
                     Дата смерті
                   </label>
-
                   <input
                     id="deathDate"
                     type="date"
                     value={deathDate}
-                    onChange={(event) =>
-                      setDeathDate(event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    onChange={(e) => setDeathDate(e.target.value)}
+                    className="w-full rounded-xl border border-[#d8d5ca] bg-[#fdfcf9] px-4 py-3 outline-none transition focus:border-[#777d66] focus:ring-2 focus:ring-[#777d66]/15"
                   />
                 </div>
-
               </div>
 
-              {/* ІСТОРІЯ */}
-
-              <div className="mt-5">
-
+              <div>
                 <label
                   htmlFor="story"
-                  className="mb-2 block text-sm font-medium text-slate-700"
+                  className="mb-2 block text-sm font-medium"
                 >
-                  Історія життя
+                  Історія життя та спогади
                 </label>
-
                 <textarea
                   id="story"
                   value={story}
-                  onChange={(event) =>
-                    setStory(event.target.value)
-                  }
-                  placeholder="Напишіть історію життя, спогади або кілька теплих слів..."
-                  rows={7}
-                  maxLength={5000}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  onChange={(e) => setStory(e.target.value)}
+                  placeholder="Розкажіть про людину, її життя та те, що хочете зберегти для майбутніх поколінь..."
+                  rows={6}
+                  className="w-full resize-y rounded-xl border border-[#d8d5ca] bg-[#fdfcf9] px-4 py-3 leading-7 outline-none transition focus:border-[#777d66] focus:ring-2 focus:ring-[#777d66]/15"
                 />
-
-                <div className="mt-2 text-right text-xs text-slate-400">
-                  {story.length}/5000
-                </div>
-
               </div>
 
-              {/* КНОПКА */}
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                  {error}
+                </p>
+              )}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-6 w-full rounded-xl bg-slate-900 px-6 py-4 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl bg-[#343d31] px-6 py-4 font-semibold text-white transition hover:bg-[#252d23] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading
-                  ? "Створюємо меморіал..."
-                  : "🕯️ Створити меморіал"}
+                {loading ? "Створення меморіалу..." : "Створити меморіал"}
               </button>
 
-            </form>
-
-          </div>
-
-          {/* ЯК ЦЕ ПРАЦЮЄ */}
-
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
-
-            <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-
-              <div className="text-4xl">
-                🕯️
-              </div>
-
-              <h3 className="mt-4 font-bold text-slate-900">
-                Цифровий меморіал
-              </h3>
-
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Окрема сторінка пам&apos;яті
-                для кожної людини.
+              <p className="text-center text-xs leading-6 text-[#77766e]">
+                Після створення ви зможете перейти на сторінку меморіалу.
               </p>
-
             </div>
-
-            <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-
-              <div className="text-4xl">
-                📖
-              </div>
-
-              <h3 className="mt-4 font-bold text-slate-900">
-                Книга пам&apos;яті
-              </h3>
-
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Люди можуть залишати
-                теплі слова та спогади.
-              </p>
-
-            </div>
-
-            <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-
-              <div className="text-4xl">
-                ❤️
-              </div>
-
-              <h3 className="mt-4 font-bold text-slate-900">
-                Пам&apos;ять назавжди
-              </h3>
-
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                QR-код веде безпосередньо
-                до сторінки меморіалу.
-              </p>
-
-            </div>
-
-          </div>
-
-          {/* CLASSIC */}
-
-          <section
-            id="classic"
-            className="mx-auto mt-16 max-w-5xl"
-          >
-
-            <div className="text-center">
-
-              <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-400">
-                Тариф MEMORYUA
-              </div>
-
-              <h2 className="mt-3 text-3xl font-bold text-slate-900 md:text-4xl">
-                Classic
-              </h2>
-
-              <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
-                Повний цифровий меморіал для
-                збереження історії, фотографій
-                та пам&apos;яті про людину.
-              </p>
-
-            </div>
-
-            <div className="mx-auto mt-8 max-w-2xl rounded-3xl border border-slate-200 bg-white p-8 shadow-sm md:p-10">
-
-              <div className="text-center">
-
-                <div className="inline-flex rounded-full bg-slate-100 px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700">
-                  CLASSIC
-                </div>
-
-                <h3 className="mt-5 text-2xl font-bold text-slate-900">
-                  Цифрова пам&apos;ять
-                </h3>
-
-                <p className="mt-2 text-sm text-slate-500">
-                  Усе необхідне для створення
-                  меморіалу.
-                </p>
-
-              </div>
-
-              <div className="mt-8 space-y-4">
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      Цифровий меморіал
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Окрема сторінка пам&apos;яті.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      QR-код
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Швидкий перехід до меморіалу.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      Основне фото
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Головна фотографія меморіалу.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      Фотогалерея
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Додаткові фотографії пам&apos;яті.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      Архів пам&apos;яті
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Збереження важливих матеріалів
-                      та документів.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="text-lg">✓</div>
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      Історія життя
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      Історія, спогади та слова пам&apos;яті.
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  document
-                    .getElementById("create-memorial")
-                    ?.scrollIntoView({
-                      behavior: "smooth",
-                    });
-                }}
-                className="mt-8 w-full rounded-xl bg-slate-900 px-6 py-4 text-sm font-semibold text-white transition hover:bg-slate-700"
-              >
-                🕯️ Створити меморіал Classic
-              </button>
-
-            </div>
-
-          </section>
-
-          {/* КНИГА ПАМ'ЯТІ */}
-
-          <div className="mx-auto mt-16 max-w-4xl rounded-3xl bg-white p-8 text-center shadow-sm md:p-10">
-
-            <div className="text-5xl">
-              📖
-            </div>
-
-            <h2 className="mt-4 text-2xl font-bold text-slate-900 md:text-3xl">
-              Книга пам&apos;яті MEMORYUA
-            </h2>
-
-            <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-              Перегляньте створені меморіали
-              та знайдіть людину, пам&apos;ять
-              про яку хочете зберегти.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => {
-                router.push("/memorials");
-              }}
-              className="mt-6 rounded-xl bg-slate-900 px-7 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-            >
-              📖 Перейти до Книги пам&apos;яті
-            </button>
-
-          </div>
-
+          </form>
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* МОЖЛИВОСТІ MEMORYUA */}
+      <section className="border-y border-[#e5e1d7] bg-[#eeece4] px-5 py-16 md:py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-semibold md:text-4xl">
+              Пам’ять у кожній деталі
+            </h2>
+            <p className="mt-4 leading-7 text-[#69695f]">
+              Усе важливе про людину — на одній сторінці.
+            </p>
+          </div>
 
-      <footer className="border-t border-slate-200 bg-white px-4 py-10 text-center">
+          <div className="grid gap-6 md:grid-cols-3">
+            <article className="rounded-2xl border border-[#e1ddd1] bg-white p-7">
+              <div className="mb-5 text-3xl" aria-hidden="true">
+                ♡
+              </div>
+              <h3 className="text-xl font-semibold">Історія життя</h3>
+              <p className="mt-3 leading-7 text-[#69695f]">
+                Збережіть біографію, фотографії та найдорожчі спогади про
+                близьку людину.
+              </p>
+            </article>
 
-        <div className="text-sm font-bold tracking-[0.2em] text-slate-800">
-          MEMORYUA
+            <article className="rounded-2xl border border-[#e1ddd1] bg-white p-7">
+              <div className="mb-5 text-3xl" aria-hidden="true">
+                ▦
+              </div>
+              <h3 className="text-xl font-semibold">QR-код пам’яті</h3>
+              <p className="mt-3 leading-7 text-[#69695f]">
+                Розмістіть QR-код на пам’ятнику, щоб відвідувачі могли
+                відкрити цифрову сторінку.
+              </p>
+            </article>
+
+            <article className="rounded-2xl border border-[#e1ddd1] bg-white p-7">
+              <div className="mb-5 text-3xl" aria-hidden="true">
+                ♧
+              </div>
+              <h3 className="text-xl font-semibold">Книга пам’яті</h3>
+              <p className="mt-3 leading-7 text-[#69695f]">
+                Дайте рідним і друзям можливість залишати слова пам’яті та
+                вшановувати людину.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* ТАРИФ */}
+      <section className="px-5 py-16 md:py-20">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-[#dfd8c7] bg-white p-8 text-center shadow-sm md:p-12">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#77735f]">
+            MEMORYUA
+          </p>
+
+          <h2 className="mt-4 text-3xl font-semibold">
+            Збережіть пам’ять для поколінь
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-xl leading-7 text-[#69695f]">
+            Створіть цифрову сторінку, до якої рідні зможуть повертатися,
+            згадуючи найдорожчі моменти життя.
+          </p>
+
+          <a
+            href="/pricing"
+            className="mt-7 inline-flex rounded-full bg-[#343d31] px-8 py-3.5 font-semibold text-white transition hover:bg-[#252d23]"
+          >
+            Переглянути тарифи
+          </a>
+        </div>
+      </section>
+
+      {/* ФУТЕР */}
+      <footer className="bg-[#182019] px-5 py-8 text-white">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
+          <div>
+            <a href="/" className="font-bold tracking-[0.18em]">
+              MEMORYUA
+            </a>
+            <p className="mt-2 text-sm text-white/65">
+              Цифрова пам’ять для майбутніх поколінь
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-5 text-sm text-white/75">
+            <a href="/memorials" className="hover:text-white">
+              Книга пам’яті
+            </a>
+            <a href="/pricing" className="hover:text-white">
+              Тарифи
+            </a>
+            <a href="/login" className="hover:text-white">
+              Увійти
+            </a>
+          </div>
         </div>
 
-        <p className="mt-2 text-xs text-slate-400">
-          Цифрова пам&apos;ять для
-          майбутніх поколінь
-        </p>
-
-        <div className="mt-5 flex flex-wrap justify-center gap-5">
-
-          <button
-            type="button"
-            onClick={() => {
-              router.push("/my-memorials");
-            }}
-            className="text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900"
-          >
-            🕯️ Мої меморіали
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              router.push("/pricing");
-            }}
-            className="text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900"
-          >
-            💳 Тарифи
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              router.push("/memorials");
-            }}
-            className="text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900"
-          >
-            📖 Книга пам&apos;яті
-          </button>
-
+        <div className="mx-auto mt-7 max-w-7xl border-t border-white/15 pt-5 text-center text-xs text-white/50">
+          © {new Date().getFullYear()} MEMORYUA. Усі права захищені.
         </div>
-
       </footer>
-
     </main>
   );
 }
