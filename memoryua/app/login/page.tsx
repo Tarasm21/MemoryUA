@@ -35,8 +35,8 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    router.replace("/my-memorials");
+router.refresh();
   }
 
   return (
