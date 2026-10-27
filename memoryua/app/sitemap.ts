@@ -29,23 +29,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
 
   return [
-    // ГОЛОВНА
     {
       url: baseUrl,
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 1,
     },
-
-    // КНИГА ПАМ'ЯТІ
     {
       url: `${baseUrl}/memorials`,
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 0.9,
     },
-
-    // УСІ МЕМОРІАЛИ
     ...memorialUrls,
   ];
 }
